@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue';
 import type { Exercise, ExerciseHistory } from '../api';
 import { parseKg, type DraftItem } from '../draft';
+import { randomRecordPicture } from '../recordPictures';
 import { checkRecord, formatNumber, lastText, stepValue, targetToday } from '../training';
 import RecordBanner from './RecordBanner.vue';
 
@@ -26,15 +27,18 @@ const hasTools = computed(() =>
 const record = computed(() => {
   const kg = parseKg(props.item.kg);
   if (!props.exercise || kg === null) return null;
-  let best: { text: string; reps: number } | null = null;
+  let best: { text: string; kind: string | null; reps: number } | null = null;
   for (const text of props.item.reps) {
     const reps = Number(text);
     if (!Number.isInteger(reps) || reps <= 0) continue;
     const result = checkRecord(props.exercise, props.history, kg, reps, props.deload);
-    if (result.isRecord && (!best || reps > best.reps)) best = { text: result.text, reps };
+    if (result.isRecord && (!best || reps > best.reps)) best = { text: result.text, kind: result.kind, reps };
   }
-  return best?.text ?? null;
+  return best;
 });
+
+// chosen once per card, so the picture does not change while typing (section 11)
+const recordPicture = randomRecordPicture();
 
 function stepKg(direction: 1 | -1) {
   props.item.kg = formatNumber(stepValue(parseKg(props.item.kg), increment.value, direction));
@@ -143,7 +147,11 @@ function finishNote() {
       Versagen im letzten Satz
     </label>
 
-    <RecordBanner v-if="record" :text="record" />
+    <RecordBanner
+      v-if="record"
+      :text="record.text"
+      :image="record.kind === 'e1rm' ? recordPicture : undefined"
+    />
   </section>
 </template>
 

@@ -81,6 +81,7 @@ export function lastText(history: ExerciseHistory | undefined): string | null {
 
 export interface RecordResult {
   isRecord: boolean;
+  kind: 'e1rm' | 'bodyweightReps' | null;   // only an e1RM record shows the record picture
   text: string;                    // e.g. "Neuer Rekord: 45 kg × 8 (e1RM +2,3 kg)"
 }
 
@@ -92,17 +93,25 @@ export interface RecordResult {
 export function checkRecord(
   exercise: Exercise, history: ExerciseHistory | undefined, kg: number, reps: number, isDeload: boolean,
 ): RecordResult {
-  const none = { isRecord: false, text: '' };
+  const none: RecordResult = { isRecord: false, kind: null, text: '' };
   if (isDeload || !history?.lastSession || !(reps > 0) || !(kg >= 0)) return none;
   if (exercise.weightType === 'Zusatzgewicht' && kg === 0) {
     if (reps > history.bestRepsAtZero) {
-      return { isRecord: true, text: `Neuer Rekord: ${reps} Wdh mit Körpergewicht (+${reps - history.bestRepsAtZero})` };
+      return {
+        isRecord: true,
+        kind: 'bodyweightReps',
+        text: `Neuer Rekord: ${reps} Wdh mit Körpergewicht (+${reps - history.bestRepsAtZero})`,
+      };
     }
     return none;
   }
   const value = e1rm(kg, reps);
   if (value > history.bestE1rm + EPSILON) {
-    return { isRecord: true, text: `Neuer Rekord: ${formatNumber(kg)} kg × ${reps} (e1RM +${formatNumber(Math.round((value - history.bestE1rm) * 10) / 10)} kg)` };
+    return {
+      isRecord: true,
+      kind: 'e1rm',
+      text: `Neuer Rekord: ${formatNumber(kg)} kg × ${reps} (e1RM +${formatNumber(Math.round((value - history.bestE1rm) * 10) / 10)} kg)`,
+    };
   }
   return none;
 }

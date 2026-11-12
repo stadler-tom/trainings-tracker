@@ -115,6 +115,7 @@ describe('checkRecord', () => {
   it('detects a higher e1RM', () => {
     const result = checkRecord(squat, h, 72.5, 6, false);
     expect(result.isRecord).toBe(true);
+    expect(result.kind).toBe('e1rm');
     expect(result.text).toBe('Neuer Rekord: 72,5 kg × 6 (e1RM +3 kg)');
   });
   it('equal e1RM is no record', () => {
@@ -131,6 +132,7 @@ describe('checkRecord', () => {
     expect(checkRecord(pullUp, ph, 0, 5, false).isRecord).toBe(false);
     const result = checkRecord(pullUp, ph, 0, 7, false);
     expect(result.isRecord).toBe(true);
+    expect(result.kind).toBe('bodyweightReps');
     expect(result.text).toBe('Neuer Rekord: 7 Wdh mit Körpergewicht (+2)');
   });
   it('added weight above 0 kg uses e1RM', () => {
