@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.DS_Store
+*.log
+# personal clasp settings (script id of the own sheet) never go into the public repo
+.clasp.json
+.clasprc.json
