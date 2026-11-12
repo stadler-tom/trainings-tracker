@@ -53,7 +53,8 @@ export class ApiError extends Error {
 
 const MESSAGES: Record<string, string> = {
   invalid_key: 'Der Schlüssel ist falsch. Bitte in den Einstellungen prüfen.',
-  network: 'Keine Verbindung zum Web-API. Netz und Adresse prüfen.',
+  network: 'Keine Verbindung zum Web-API. Bitte Netz prüfen, ob die Adresse auf /exec endet und ob der Zugriff der Bereitstellung auf „Jeder“ steht.',
+  dev_url: 'Die Adresse endet auf /dev. Das ist die Test-Adresse des Editors; bitte die Web-App-URL auf /exec aus „Bereitstellungen verwalten“ eintragen.',
   not_configured: 'Web-API-Adresse und Schlüssel fehlen. Bitte in den Einstellungen eintragen.',
   invalid_response: 'Das Web-API hat unerwartet geantwortet. Ist die Adresse richtig?',
   already_saved: 'Dieser Trainingstag ist für das Datum schon gespeichert. Korrekturen bitte direkt im Sheet.',
@@ -76,6 +77,7 @@ export function errorMessage(error: unknown): string {
 
 async function call<T>(settings: Settings, action: string, payload: object = {}): Promise<T> {
   if (!settings.apiUrl || !settings.apiKey) throw new ApiError('not_configured');
+  if (settings.apiUrl.endsWith('/dev')) throw new ApiError('dev_url');
   let response: Response;
   try {
     response = await fetch(settings.apiUrl, {

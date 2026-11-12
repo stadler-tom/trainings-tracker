@@ -12,10 +12,11 @@
  * Error codes are English; the app shows German messages.
  */
 
-const API_VERSION = '1.0.1';
+const API_VERSION = '1.0.2';
 const APP_URL = 'https://stadler-tom.github.io/trainings-tracker/';
 const KEY_PROPERTY = 'API_KEY';
 const CLIENT_IDS_PROPERTY = 'SAVED_CLIENT_IDS';
+const WEB_APP_URL_PROPERTY = 'WEB_APP_URL';
 const CLIENT_IDS_KEPT = 200;
 const EXTRA_EXERCISE_COLUMNS = { note: 'Gerätenotiz', barWeight: 'Stangengewicht kg' };
 
@@ -72,15 +73,36 @@ function setupApi() {
 }
 
 /**
- * Run from the editor after deploying as a web app: writes the setup link to the log.
- * Copy it and paste it into the app (Einstellungen → Einrichtungslink).
+ * Run from the editor after deploying as a web app. Asks once for the web app URL
+ * (ends with /exec; the editor itself only knows the /dev test URL), stores it and
+ * shows the setup link to paste into the app (Einstellungen → Einrichtungslink).
  */
 function showSetupLink() {
-  const key = PropertiesService.getScriptProperties().getProperty(KEY_PROPERTY);
-  const url = ScriptApp.getService().getUrl();
+  const properties = PropertiesService.getScriptProperties();
+  const key = properties.getProperty(KEY_PROPERTY);
   if (!key) throw new Error('No API key yet: run setupApi first.');
-  if (!url) throw new Error('Not deployed yet: Deploy > New deployment > Web app.');
-  Logger.log(APP_URL + '#api=' + encodeURIComponent(url) + '&key=' + key);
+  const ui = SpreadsheetApp.getUi();
+  let url = properties.getProperty(WEB_APP_URL_PROPERTY) || '';
+  if (!isWebAppUrl_(url)) {
+    const answer = ui.prompt('Web-App-Adresse',
+      'Bitte die Web-App-URL aus "Bereitstellen → Bereitstellungen verwalten" einfügen (endet auf /exec):',
+      ui.ButtonSet.OK_CANCEL);
+    if (answer.getSelectedButton() !== ui.Button.OK) return;
+    url = answer.getResponseText().trim();
+    if (!isWebAppUrl_(url)) {
+      ui.alert('Das ist keine gültige Web-App-Adresse. Sie beginnt mit https://script.google.com/ und endet auf /exec.');
+      return;
+    }
+    properties.setProperty(WEB_APP_URL_PROPERTY, url);
+  }
+  const link = APP_URL + '#api=' + encodeURIComponent(url) + '&key=' + key;
+  Logger.log(link);
+  ui.alert('Einrichtungslink', 'Diesen Link aufs Handy schicken und in der App unter Einstellungen einfügen. ' +
+    'Er enthält deinen Schlüssel, bitte nicht weitergeben.\n\n' + link, ui.ButtonSet.OK);
+}
+
+function isWebAppUrl_(url) {
+  return /^https:\/\/script\.google\.com\/.+\/exec$/.test(url);
 }
 
 // ===== Actions =================================================================
