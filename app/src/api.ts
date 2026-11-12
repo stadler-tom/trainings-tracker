@@ -64,7 +64,7 @@ const MESSAGES: Record<string, string> = {
   nothing_to_save: 'Es ist noch kein Satz eingetragen.',
   busy: 'Das Sheet ist gerade beschäftigt. Bitte gleich noch einmal versuchen.',
   unknown_exercise: 'Eine Übung fehlt im Übungsstamm des Sheets.',
-  unknown_day: 'Diesen Trainingstag gibt es im Sheet nicht.',
+  unknown_day: 'Diesen Trainingstag gibt es im Sheet nicht mehr. Wurde das Tagesblatt gelöscht? Die Eingaben bleiben erhalten.',
   invalid_date: 'Das Datum ist ungültig.',
   too_many_exercises: 'Ein Trainingstag hat höchstens 10 Übungen.',
   missing_client_id: 'Die App hat eine unvollständige Anfrage gesendet. Bitte die Seite neu laden.',

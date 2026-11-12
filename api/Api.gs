@@ -12,7 +12,7 @@
  * Error codes are English; the app shows German messages.
  */
 
-const API_VERSION = '1.1.0';
+const API_VERSION = '1.2.0';
 const APP_URL = 'https://stadler-tom.github.io/trainings-tracker/';
 const KEY_PROPERTY = 'API_KEY';
 const CLIENT_IDS_PROPERTY = 'SAVED_CLIENT_IDS';
@@ -57,26 +57,41 @@ function handle_(action, key, payload) {
 
 /**
  * Run once from the Apps Script editor (requirements spec section 7.2).
- * Safe to run again at any time; it only adds what is missing:
- * sheet "Einstellungen", sheets for the training days, the two extra exercise columns
- * and the key. Existing data is never changed.
+ * Safe to run again at any time; it only adds what is missing: the key, the two extra
+ * exercise columns and the hidden ID column on day sheets from before version 1.2.
+ * Existing data is never changed.
  */
 function setupApi() {
   const ss = SpreadsheetApp.getActive();
   const properties = PropertiesService.getScriptProperties();
-  let key = properties.getProperty(KEY_PROPERTY);
-  if (!key) {
-    key = Utilities.getUuid().replace(/-/g, '');
-    properties.setProperty(KEY_PROPERTY, key);
+  if (!properties.getProperty(KEY_PROPERTY)) {
+    properties.setProperty(KEY_PROPERTY, Utilities.getUuid().replace(/-/g, ''));
   }
-  const created = applyDays();
   ensureExerciseColumns_(ss);
   refreshExerciseList_(ss);
-  Logger.log('API key created. New day sheets: ' + (created.length ? created.join(', ') : 'none'));
+  const ctx = loadContext_(ss);
+  const days = daySheets_(ss);
+  days.forEach(function (sheet) { fillSlotIds_(sheet, ctx); });
+  withLock_(function () { return syncDayNames_(ss); });
+  const names = days.map(function (sheet) { return sheet.getName(); });
+  Logger.log('Setup done. Day sheets: ' + (names.length ? names.join(', ') : 'none'));
   SpreadsheetApp.getUi().alert('Einrichtung', 'Fertig. ' +
-    (created.length ? 'Neu angelegte Trainingstage: ' + created.join(', ') + '. ' : '') +
+    (names.length ? 'Trainingstage: ' + names.join(', ') + '. '
+      : 'Es gibt noch kein Tagesblatt: ein Tagesblatt duplizieren oder die Vorlage neu kopieren. ') +
     'Nächster Schritt laut Anleitung: Bereitstellen → Neue Bereitstellung → Web-App.',
     SpreadsheetApp.getUi().ButtonSet.OK);
+}
+
+/** Writes the exercise ID next to every slot that has none yet (day sheets from before version 1.2). */
+function fillSlotIds_(sheet, ctx) {
+  ensureIdColumn_(sheet);
+  const values = slotValues_(sheet);
+  for (let slot = 0; slot < SLOT_COUNT; slot++) {
+    const row = values[slot * ROWS_PER_SLOT];
+    const name = String(row[0] || '');
+    const id = ctx.idByName[name];
+    if (!row[ID_COL - 1] && id) sheet.getRange(nameRow_(slot), ID_COL).setValue(id);
+  }
 }
 
 /**
@@ -121,9 +136,10 @@ function ping_() {
 function getState_() {
   const ss = SpreadsheetApp.getActive();
   const tz = ss.getSpreadsheetTimeZone();
+  withLock_(function () { return syncDayNames_(ss); });   // renamed tabs: log follows first
   const exercises = readExerciseRows_(ss);
-  const nameToId = {};
-  exercises.forEach(function (ex) { nameToId[ex.name] = ex.id; });
+  const idByName = {};
+  exercises.forEach(function (ex) { idByName[ex.name] = ex.id; });
 
   const history = {};          // id -> { lastSession, bestE1rm, bestRepsAtZero }
   const lastDateByDay = {};
@@ -150,10 +166,10 @@ function getState_() {
     if (s) s.sets.sort(function (a, b) { return a.set - b.set; });
   });
 
-  const days = daySheets_(ss).filter(function (name) { return ss.getSheetByName(name); }).map(function (name) {
-    const sheet = ss.getSheetByName(name);
-    const slots = sheet ? readSlots_(sheet).map(function (slot) { return nameToId[slot.name] || null; }) : [];
-    return { name: name, lastDate: lastDateByDay[name] || null, exerciseIds: slots.filter(Boolean) };
+  const days = daySheets_(ss).map(function (sheet) {
+    const name = sheet.getName();
+    const ids = readSlots_(sheet, { idByName: idByName }).map(function (slot) { return slot.id; });
+    return { name: name, lastDate: lastDateByDay[name] || null, exerciseIds: ids.filter(Boolean) };
   });
 
   return { apiVersion: API_VERSION, days: days, exercises: exercises, history: history };
@@ -169,7 +185,10 @@ function saveTrainingFromApp_(p) {
   const tz = ss.getSpreadsheetTimeZone();
   if (!p.clientId) return { ok: false, error: 'missing_client_id' };
   if (wasClientIdSaved_(p.clientId)) return { ok: true, data: { duplicate: true } };
-  if (daySheets_(ss).indexOf(p.day) < 0 || !ss.getSheetByName(p.day)) return { ok: false, error: 'unknown_day' };
+  syncDayNames_(ss);
+  const daySheet = findDaySheet_(ss, p.day);            // also finds a day renamed since the app loaded
+  if (!daySheet) return { ok: false, error: 'unknown_day' };
+  const day = daySheet.getName();
   const date = parseIsoDate_(p.date);
   if (!date) return { ok: false, error: 'invalid_date' };
 
@@ -189,7 +208,7 @@ function saveTrainingFromApp_(p) {
     if (typeof item.kg !== 'number' || !(item.kg >= 0)) return { ok: false, error: 'missing_weight', detail: ex.name };
     if (sets.some(function (s) { return !(s.reps > 0); })) return { ok: false, error: 'invalid_reps', detail: ex.name };
     sets.forEach(function (s, index) {
-      rows.push([date, p.day, ex.id, ex.name, ex.muscleGroup, s.no, item.kg, s.reps,
+      rows.push([date, day, ex.id, ex.name, ex.muscleGroup, s.no, item.kg, s.reps,
         item.failure === true && index === sets.length - 1, p.deload === true, now, String(p.note || '')]);
     });
   }
@@ -200,7 +219,7 @@ function saveTrainingFromApp_(p) {
   const dateText = Utilities.formatDate(date, tz, 'yyyy-MM-dd');
   if (lastRow > 1) {
     const exists = log.getRange(2, 1, lastRow - 1, 2).getValues().some(function (r) {
-      return r[0] instanceof Date && r[1] === p.day && Utilities.formatDate(r[0], tz, 'yyyy-MM-dd') === dateText;
+      return r[0] instanceof Date && r[1] === day && Utilities.formatDate(r[0], tz, 'yyyy-MM-dd') === dateText;
     });
     if (exists) return { ok: false, error: 'already_saved' };
   }
@@ -215,23 +234,22 @@ function saveTrainingFromApp_(p) {
 /** Writes the exercise order of one day sheet (section 4.2). Payload: { day, exerciseIds: [...] } */
 function updateDaySlots_(p) {
   const ss = SpreadsheetApp.getActive();
-  if (daySheets_(ss).indexOf(p.day) < 0 || !ss.getSheetByName(p.day)) return { ok: false, error: 'unknown_day' };
+  syncDayNames_(ss);
+  const sheet = findDaySheet_(ss, p.day);
+  if (!sheet) return { ok: false, error: 'unknown_day' };
   const ids = p.exerciseIds || [];
   if (ids.length > SLOT_COUNT) return { ok: false, error: 'too_many_exercises' };
-  const byId = {};
-  readExerciseRows_(ss).forEach(function (ex) { byId[ex.id] = ex; });
-  if (ids.some(function (id) { return !byId[id]; })) return { ok: false, error: 'unknown_exercise' };
+  const ctx = loadContext_(ss);
+  if (ids.some(function (id) { return !ctx.exercises[id]; })) return { ok: false, error: 'unknown_exercise' };
 
-  const sheet = ss.getSheetByName(p.day);
   // keep inputs that were already typed into the sheet for exercises that stay
-  const inputsByName = {};
-  readSlots_(sheet).forEach(function (slot) { inputsByName[slot.name] = slot.inputs; });
+  const inputsById = {};
+  readSlots_(sheet, ctx).forEach(function (slot) { inputsById[slot.id] = slot.inputs; });
   const used = ids.map(function (id) {
-    const name = byId[id].name;
-    return { name: name, inputs: inputsByName[name] || ['', '', '', '', '', false] };
+    return { id: id, name: ctx.exercises[id].name, inputs: inputsById[id] || ['', '', '', '', '', false] };
   });
-  writeSlots_(sheet, used);
-  refreshInfo_(sheet, loadContext_(ss));
+  writeSlots_(sheet, used, ctx);
+  refreshInfo_(sheet, ctx);
   return { ok: true, data: { exerciseIds: ids } };
 }
 

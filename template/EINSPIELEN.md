@@ -10,7 +10,11 @@ Drei Teile, alle am PC. Reihenfolge einhalten.
 
 ## A. Echtes Sheet umstellen
 
-Dabei werden nur Script-Dateien ersetzt und Dinge ergänzt: das Blatt **Einstellungen** und die zwei Spalten **Gerätenotiz** und **Stangengewicht kg** am Ende des Blatts Übungen. Log, Körper, Übungen und deine Tagesblätter bleiben unverändert. Das ist an einer Kopie mit deinem alten Script-Stand getestet.
+Dabei werden nur Script-Dateien ersetzt und Dinge ergänzt:
+- im Blatt Übungen am Ende die zwei Spalten **Gerätenotiz** und **Stangengewicht kg**,
+- in jedem Tagesblatt eine ausgeblendete Spalte G mit der ID jeder gewählten Übung.
+
+Log, Körper, Übungen und alle sichtbaren Zellen deiner Tagesblätter bleiben unverändert. Das ist an einer Nachbildung mit deinem alten Script-Stand getestet.
 
 ### A1. Sicherung
 
@@ -29,8 +33,8 @@ Danach stehen genau drei Dateien da: `Save.gs`, `Setup.gs`, `Api.gs`. Steht noch
 ### A3. Einrichtung
 
 1. Funktion **setupApi** wählen, **Ausführen**, Berechtigungen bestätigen (**Erweitert → Zu … wechseln → Zulassen**).
-2. Im Tab mit dem Sheet erscheint „Fertig.“ ohne neu angelegte Trainingstage. Mit **OK** schließen.
-3. Kurz prüfen: Blatt **Einstellungen** ist neu und listet Beine, Push, Pull, Upper. Deine Tagesblätter sehen aus wie vorher.
+2. Im Tab mit dem Sheet erscheint „Fertig. Trainingstage: Beine, Push, Pull, Upper.“ Mit **OK** schließen.
+3. Kurz prüfen: Deine Tagesblätter sehen aus wie vorher.
 
 ### A4. Stangengewichte eintragen
 
@@ -54,9 +58,11 @@ Alle anderen Zeilen leer lassen.
 
 1. Funktion **showSetupLink** ausführen, im Sheet-Tab die URL aus A5 einfügen, **OK**.
 2. Den angezeigten Einrichtungslink kopieren und aufs iPhone schicken (Mail an dich, Notizen).
-3. In der App: **Einstellungen → Einrichtungslink** einfügen → **Link übernehmen** → Meldung „Verbunden mit …“ und Web-API 1.1.0 → **Speichern**.
+3. In der App: **Einstellungen → Einrichtungslink** einfügen → **Link übernehmen** → Meldung „Verbunden mit …“ und Web-API 1.2.0 → **Speichern**.
 
 Die App arbeitet jetzt mit deinem echten Sheet. Die Testkopie brauchst du nicht mehr.
+
+Ab jetzt gilt: Tag umbenennen = nur den Reiter umbenennen. Beim nächsten Öffnen der App zieht das Script den Namen im Log nach.
 
 > Ein späteres Script-Update geht nach [UPDATE.md](UPDATE.md): mit „Bereitstellungen verwalten → Bearbeiten → Neue Version“ bleibt die Adresse gleich, in der App ändert sich nichts.
 
@@ -70,7 +76,7 @@ Die Vorlage ist ein eigenes, neues Sheet ohne deine Daten.
 2. **Erweiterungen → Apps Script**. Die vorhandene Datei `Code.gs` in `Save` umbenennen (drei Punkte neben dem Namen → Umbenennen) und den Inhalt durch [api/Save.gs](../api/Save.gs) ersetzen.
 3. Zwei neue Dateien anlegen (**+ → Script**): `Setup` mit [api/Setup.gs](../api/Setup.gs) und `Api` mit [api/Api.gs](../api/Api.gs). Strg + S.
 4. Funktion **create** wählen, **Ausführen**, Berechtigungen bestätigen.
-5. Das Sheet heißt jetzt „Trainings-Tracker“ und hat die Blätter Hilfe, Einstellungen, Körper, Übungen und Log. Log und Körper sind leer.
+5. Das Sheet heißt jetzt „Trainings-Tracker“ und hat die Blätter Hilfe, Training A, Körper, Übungen und Log. Log und Körper sind leer. „Training A“ ist das Beispiel-Tagesblatt, das deine Freunde umbenennen und duplizieren.
 
 **Nicht** setupApi und **nicht** showSetupLink in der Vorlage ausführen. Sonst bekäme jede Kopie denselben Schlüssel.
 

@@ -1,10 +1,8 @@
 /**
  * Training tracker – setup of a new tracker sheet (run from the Apps Script editor).
  *
- * create():         builds all sheets except the day sheets in an EMPTY spreadsheet.
- *                   Used once to build the template.
- * applyDays():      creates the input sheets for the training days listed in sheet "Einstellungen".
- *                   Existing day sheets are never changed or deleted.
+ * create():         builds all sheets in an EMPTY spreadsheet, with one example day sheet.
+ *                   Used once to build the template. More days: duplicate a day sheet and rename the tab.
  * clearAllInputs(): clears entered kg, sets and failure marks on all input sheets.
  *
  * Shared configuration (sheet names, columns, cells) lives in Save.gs.
@@ -48,7 +46,7 @@ const EXERCISES = [
 const EXAMPLE_BAR_WEIGHTS = { E01: 20, E02: 20, E06: 0 };
 
 const COLOR = { input: '#fff8e1', computed: '#f1f3f4', mutedText: '#6b7280', header: '#263238', accent: '#c62828', divider: '#b0b0b0', cellBorder: '#9e9e9e' };
-const TAB_COLOR = { Beine: '#2e7d32', Push: '#c62828', Pull: '#1565c0', Upper: '#6a1b9a' };
+const EXAMPLE_DAY = 'Training A';
 // widths chosen so that A–F fit in portrait mode without horizontal scrolling
 const COLUMN_WIDTHS = [96, 50, 50, 50, 50, 44];
 
@@ -62,12 +60,11 @@ function create() {
   ss.setSpreadsheetTimeZone('Europe/Berlin');
   ss.rename('Trainings-Tracker');
   const oldSheets = ss.getSheets();
-  [SHEET.help, SHEET.settings, SHEET.body, SHEET.exercises, SHEET.log, SHEET.lists]
+  [SHEET.help, EXAMPLE_DAY, SHEET.body, SHEET.exercises, SHEET.log, SHEET.lists]
     .forEach(function (name) { ss.insertSheet(name); });
   oldSheets.forEach(function (s) { ss.deleteSheet(s); });
 
   buildHelpSheet_(ss);
-  ensureSettingsSheet_(ss);
   buildExerciseSheet_(ss);
   const extra = ensureExerciseColumns_(ss);
   const exerciseSheet = ss.getSheetByName(SHEET.exercises);
@@ -78,30 +75,13 @@ function create() {
   refreshExerciseList_(ss);
   buildLogSheet_(ss);
   buildBodySheet_(ss);
-  // no day sheets yet: each user lists their days in "Einstellungen" and setupApi creates them
+  buildInputSheet_(ss, EXAMPLE_DAY);
   ss.setActiveSheet(ss.getSheetByName(SHEET.help));
-}
-
-/** Creates the sheets for all training days in "Einstellungen" that do not exist yet. */
-function applyDays() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  ensureSettingsSheet_(ss);
-  const created = [];
-  daySheets_(ss).forEach(function (day) {
-    if (ss.getSheetByName(day)) return;
-    ss.insertSheet(day, ss.getSheets().length);
-    buildInputSheet_(ss, day);
-    created.push(day);
-  });
-  refreshAllInfo_(ss);
-  return created;
 }
 
 function clearAllInputs() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  daySheets_(ss).forEach(function (day) {
-    const sheet = ss.getSheetByName(day);
-    if (!sheet) return;
+  daySheets_(ss).forEach(function (sheet) {
     clearInputs_(sheet);
     showStatus_(sheet, 'Eingaben zurückgesetzt.');
   });
@@ -109,24 +89,6 @@ function clearAllInputs() {
 }
 
 // ===== Sheet builders =========================================================
-/** Sheet "Einstellungen": list of training days (A2:A8). Created with the default days if missing. */
-function ensureSettingsSheet_(ss) {
-  if (ss.getSheetByName(SHEET.settings)) return;
-  const sheet = ss.insertSheet(SHEET.settings, 0);
-  sheet.getRange('A1').setValue('Trainingstage');
-  styleHeaderRow_(sheet, 1);
-  const days = DEFAULT_DAYS.map(function (d) { return [d]; });
-  sheet.getRange(2, 1, days.length, 1).setValues(days);
-  sheet.getRange(2, 1, MAX_DAYS, 1).setBackground(COLOR.input);
-  sheet.setColumnWidth(1, 180);
-  sheet.getRange('C1:C4').setValues([
-    ['Ein Trainingstag pro Zeile, höchstens 7, in der Reihenfolge der Woche.'],
-    ['Danach im Apps-Script-Editor die Funktion setupApi ausführen; sie legt die Blätter für die Tage an.'],
-    ['Später neue Tage ergänzen: Namen eintragen und applyDays ausführen.'],
-    ['Bestehende Tagesblätter werden nie geändert oder gelöscht. Tage nach dem ersten Training nicht umbenennen.']
-  ]).setFontColor(COLOR.mutedText).setFontStyle('italic');
-}
-
 function buildLogSheet_(ss) {
   const sheet = ss.getSheetByName(SHEET.log);
   sheet.getRange(1, 1, 1, LOG_HEADER.length).setValues([LOG_HEADER]);
@@ -176,9 +138,10 @@ function buildInputSheet_(ss, day) {
   const lastRow = FIRST_ROW + SLOT_COUNT * ROWS_PER_SLOT - 1;
 
   sheet.setHiddenGridlines(true);
-  sheet.setTabColor(TAB_COLOR[day] || null);
   COLUMN_WIDTHS.forEach(function (w, i) { sheet.setColumnWidth(i + 1, w); });
-  if (sheet.getMaxColumns() > INPUT_COLS) sheet.deleteColumns(INPUT_COLS + 1, sheet.getMaxColumns() - INPUT_COLS);
+  if (sheet.getMaxColumns() > ID_COL) sheet.deleteColumns(ID_COL + 1, sheet.getMaxColumns() - ID_COL);
+  ensureIdColumn_(sheet);
+  sheet.hideColumns(ID_COL);
   if (sheet.getMaxRows() > lastRow) sheet.deleteRows(lastRow + 1, sheet.getMaxRows() - lastRow);
   sheet.getRange(1, 1, lastRow, INPUT_COLS).setFontFamily('Roboto').setFontSize(11).setVerticalAlignment('middle');
 
@@ -232,7 +195,7 @@ function buildInputSheet_(ss, day) {
   protectedRanges.forEach(function (range) {
     range.protect().setDescription('Berechnet – nicht überschreiben').setWarningOnly(true);
   });
-  writeSlots_(sheet, []);
+  writeSlots_(sheet, [], { exercises: {}, idByName: {} });
 }
 
 function buildHelpSheet_(ss) {
@@ -245,12 +208,15 @@ function buildHelpSheet_(ss) {
     ['https://github.com/stadler-tom/trainings-tracker/blob/main/template/ANLEITUNG.md'],
     [''],
     ['BLÄTTER'],
-    ['Einstellungen: deine Trainingstage.'],
+    ['Trainingstage: jedes Tagesblatt ist ein Trainingstag, der Reitername ist der Name in der App.'],
+    ['  Umbenennen: Reiter umbenennen (das Log zieht beim nächsten Öffnen der App nach). Neuer Tag: Tagesblatt duplizieren und umbenennen.'],
+    ['  Reihenfolge in der App = Reihenfolge der Reiter. Löschen: Reiter löschen (das Log bleibt).'],
     ['Übungen: Übungsstamm. Neue Übung = neue Zeile mit neuer ID. Nie löschen, nur Aktiv = nein.'],
     ['Gewichtssprung: Schritt für die +/−-Knöpfe in der App. Stangengewicht: aktiviert den Scheibenrechner (0 = ohne Stange).'],
     ['Log: alle gespeicherten Sätze. Korrekturen direkt hier.'],
     ['Körper: Gewicht morgens nüchtern, Bauchumfang wöchentlich.'],
     ['Tagesblätter: Übungsauswahl je Trainingstag. Die App liest und schreibt sie; Eingabe direkt im Sheet ist ebenfalls möglich.'],
+    ['  Übungsnamen nur im Blatt Übungen ändern, die Tagesblätter übernehmen ihn automatisch.'],
     [''],
     ['EXCEL-AUSWERTUNG'],
     ['Excel-Datei: template/Trainings-Auswertung.xlsx im Repository (Link oben) herunterladen.'],
@@ -260,17 +226,11 @@ function buildHelpSheet_(ss) {
   sheet.getRange(1, 1, lines.length, 1).setValues(lines);
   sheet.setColumnWidth(1, 900);
   sheet.getRange('A1').setFontSize(14).setFontWeight('bold');
-  [7, 15].forEach(function (row) { sheet.getRange(row, 1).setFontWeight('bold'); });
+  [7, 18].forEach(function (row) { sheet.getRange(row, 1).setFontWeight('bold'); });
   sheet.setHiddenGridlines(true);
 }
 
 // ===== Helpers ================================================================
-function exercisesById_() {
-  const byId = {};
-  EXERCISES.forEach(function (r) { byId[r[EX.id]] = r; });
-  return byId;
-}
-
 function styleHeaderRow_(sheet, columnCount) {
   sheet.getRange(1, 1, 1, columnCount).setFontWeight('bold').setFontColor('#ffffff').setBackground(COLOR.header);
   sheet.setFrozenRows(1);

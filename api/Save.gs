@@ -5,34 +5,26 @@
  * - ticking "Speichern" saves the training to the log,
  * - changing or removing an exercise compacts the slots and refreshes the info rows,
  * - choosing a position in column F moves the exercise there (inputs move with it),
- * - toggling "Deload" refreshes the info rows.
+ * - toggling "Deload" refreshes the info rows,
+ * - editing "Übungen" refreshes the dropdown list, the shown names and the info rows.
+ * Day sheets are recognised by their header in row 4; the tab name is the day name.
+ * Every slot keeps the exercise ID in hidden column G, so renaming an exercise is safe.
  * Info rows are computed here and written as plain text (no sheet formulas),
  * so nothing depends on the spreadsheet locale.
  *
  * Convention: identifiers and comments in English, everything the user reads in German.
  */
 
-// ===== Configuration (shared with Setup.gs) ==================================
-const SHEET = { settings: 'Einstellungen', exercises: 'Übungen', log: 'Log', body: 'Körper', help: 'Hilfe', lists: '_lists' };
-// Used when a sheet has no "Einstellungen" sheet yet (trackers created before version 1 of the app).
-const DEFAULT_DAYS = ['Beine', 'Push', 'Pull', 'Upper'];
-const MAX_DAYS = 7;
-
-/** Training day names from sheet "Einstellungen" (A2:A8), in order. */
-function daySheets_(ss) {
-  const settings = ss.getSheetByName(SHEET.settings);
-  if (!settings) return DEFAULT_DAYS.slice();
-  const names = settings.getRange(2, 1, MAX_DAYS, 1).getValues()
-    .map(function (r) { return String(r[0] || '').trim(); })
-    .filter(function (name) { return name !== ''; });
-  return names.length ? names : DEFAULT_DAYS.slice();
-}
+// ===== Configuration (shared with Setup.gs and Api.gs) =======================
+const SHEET = { exercises: 'Übungen', log: 'Log', body: 'Körper', help: 'Hilfe', lists: '_lists' };
 
 // Each slot uses three rows: exercise name + position, inputs, info.
 const FIRST_ROW = 5;
 const SLOT_COUNT = 10;
 const ROWS_PER_SLOT = 3;
 const INPUT_COLS = 6;       // input row: A kg, B–E sets 1–4, F failure
+const ID_COL = 7;           // hidden column G, name row: ID of the exercise (the name in A is only shown)
+const DAY_HEADER = ['kg', 'S1', 'S2', 'S3', 'S4', '✗'];   // row 4 of every day sheet
 const CELL = { date: 'A1', note: 'A2', status: 'A3', deload: 'F1', save: 'F2' };
 const NO_EXERCISE = '– keine –';   // dropdown entry that empties a slot
 const POSITION_COL = 6;            // name row, column F: position of the exercise in the day
@@ -45,8 +37,88 @@ const LOG_HEADER = ['Datum', 'Tag', 'Übungs-ID', 'Übung', 'Muskelgruppe', 'Sat
 const VALUE = { active: 'ja', warmUp: 'Aufwärmen', addedWeight: 'Zusatzgewicht' };
 const DECREASE_TOLERANCE = 2;   // rule 3 only if set 1 is more than this below reps min
 
+// script properties for following tab renames (see syncDayNames_)
+const DAY_NAMES_PROPERTY = 'DAY_NAMES';       // { sheetId: tab name at the last check }
+const DAY_ALIASES_PROPERTY = 'DAY_ALIASES';   // { former tab name: sheetId }
+
 function nameRow_(slot) { return FIRST_ROW + slot * ROWS_PER_SLOT; }
-function slotBlockRange_(sheet) { return sheet.getRange(FIRST_ROW, 1, SLOT_COUNT * ROWS_PER_SLOT, INPUT_COLS); }
+
+// ===== Training days: the tab name is the only place a day is named ===========
+/** Day sheets in tab order: every sheet with the input header in row 4. */
+function daySheets_(ss) {
+  return ss.getSheets().filter(isDaySheet_);
+}
+
+function isDaySheet_(sheet) {
+  if (sheet.getMaxRows() < 4 || sheet.getMaxColumns() < INPUT_COLS) return false;
+  const header = sheet.getRange(4, 1, 1, INPUT_COLS).getValues()[0];
+  return DAY_HEADER.every(function (value, i) { return header[i] === value; });
+}
+
+/** Day sheet by its current tab name, or by a former name if the tab was renamed meanwhile. */
+function findDaySheet_(ss, name) {
+  const sheet = ss.getSheetByName(name);
+  if (sheet && isDaySheet_(sheet)) return sheet;
+  const aliases = readJsonProperty_(DAY_ALIASES_PROPERTY);
+  if (!aliases[name]) return null;
+  const renamed = ss.getSheets().filter(function (s) { return String(s.getSheetId()) === aliases[name]; })[0];
+  return renamed && isDaySheet_(renamed) ? renamed : null;
+}
+
+/**
+ * Follows renamed tabs: the sheet ID stays the same when a tab is renamed, so a changed
+ * name since the last check means the day was renamed. The day name in the log is then
+ * replaced (all renames in one pass, so swapping two names works). Returns changed log rows.
+ * Call while holding the document lock.
+ */
+function syncDayNames_(ss) {
+  const known = readJsonProperty_(DAY_NAMES_PROPERTY);
+  const aliases = readJsonProperty_(DAY_ALIASES_PROPERTY);
+  const current = {};
+  const renamed = {};                          // old name -> new name
+  daySheets_(ss).forEach(function (sheet) {
+    const id = String(sheet.getSheetId());
+    const name = sheet.getName();
+    current[id] = name;
+    if (known[id] && known[id] !== name) {
+      renamed[known[id]] = name;
+      aliases[known[id]] = id;
+    }
+  });
+
+  let changedRows = 0;
+  const log = ss.getSheetByName(SHEET.log);
+  if (Object.keys(renamed).length && log.getLastRow() > 1) {
+    const range = log.getRange(2, LOG.day + 1, log.getLastRow() - 1, 1);
+    const values = range.getValues();
+    values.forEach(function (row) {
+      const newName = renamed[String(row[0])];
+      if (newName !== undefined) { row[0] = newName; changedRows++; }
+    });
+    if (changedRows) range.setValues(values);
+  }
+
+  // an alias is dropped when its sheet is gone or a tab carries that name again
+  const names = Object.keys(current).map(function (id) { return current[id]; });
+  Object.keys(aliases).forEach(function (old) {
+    if (!(aliases[old] in current) || names.indexOf(old) >= 0) delete aliases[old];
+  });
+  writeJsonProperty_(DAY_NAMES_PROPERTY, current);
+  writeJsonProperty_(DAY_ALIASES_PROPERTY, aliases);
+  return changedRows;
+}
+
+function readJsonProperty_(name) {
+  const text = PropertiesService.getScriptProperties().getProperty(name);
+  return text ? JSON.parse(text) : {};
+}
+
+/** Writes only if the value changed (property writes are rate limited). */
+function writeJsonProperty_(name, value) {
+  const properties = PropertiesService.getScriptProperties();
+  const text = JSON.stringify(value);
+  if (properties.getProperty(name) !== text) properties.setProperty(name, text);
+}
 
 // ===== Trigger ================================================================
 /** Simple trigger: runs on every edit, also in the Google Sheets mobile app. */
@@ -56,9 +128,9 @@ function onEdit(e) {
   const name = sheet.getName();
   const ss = sheet.getParent();
 
-  if (name === SHEET.exercises) { refreshExerciseList_(ss); refreshAllInfo_(ss); return; }
+  if (name === SHEET.exercises) { refreshExerciseList_(ss); refreshAllInfo_(ss); return; }   // also renames
   if (name === SHEET.log) { refreshAllInfo_(ss); return; }
-  if (daySheets_(ss).indexOf(name) < 0) return;
+  if (!isDaySheet_(sheet)) return;
 
   const a1 = range.getA1Notation();
   if (a1 === CELL.save) {
@@ -69,6 +141,7 @@ function onEdit(e) {
       return;
     }
     try {
+      syncDayNames_(ss);
       saveTraining_(sheet);
       refreshAllInfo_(ss);   // exercises can appear on several days
     } finally {
@@ -81,56 +154,89 @@ function onEdit(e) {
   const offset = range.getRow() - FIRST_ROW;
   const isNameRow = offset >= 0 && offset % ROWS_PER_SLOT === 0 && offset < SLOT_COUNT * ROWS_PER_SLOT;
   if (!isNameRow) return;
-  if (range.getColumn() === 1) {                        // exercise changed, added or removed
-    writeSlots_(sheet, readSlots_(sheet));
-    refreshInfo_(sheet, loadContext_(ss));
+  const ctx = loadContext_(ss);
+  if (range.getColumn() === 1) {                        // exercise chosen in the sheet: take its ID
+    ensureIdColumn_(sheet);
+    const chosen = ctx.idByName[String(range.getValue() || '')];
+    sheet.getRange(range.getRow(), ID_COL).setValue(chosen || '');
+    writeSlots_(sheet, readSlots_(sheet, ctx), ctx);
+    refreshInfo_(sheet, ctx);
   } else if (range.getColumn() === POSITION_COL) {      // position changed
-    moveSlot_(sheet, offset / ROWS_PER_SLOT, Number(range.getValue()));
-    refreshInfo_(sheet, loadContext_(ss));
+    moveSlot_(sheet, offset / ROWS_PER_SLOT, Number(range.getValue()), ctx);
+    refreshInfo_(sheet, ctx);
   }
 }
 
 // ===== Slots: order, compaction and visibility ===============================
-/** Returns the used slots in sheet order: exercise name and its input row (kg, sets, failure). */
-function readSlots_(sheet) {
-  const values = slotBlockRange_(sheet).getValues();
+/** Adds the hidden ID column G to a day sheet created before it existed. */
+function ensureIdColumn_(sheet) {
+  if (sheet.getMaxColumns() < ID_COL) {
+    sheet.insertColumnsAfter(sheet.getMaxColumns(), ID_COL - sheet.getMaxColumns());
+    sheet.hideColumns(ID_COL);
+  }
+}
+
+/** Name rows (A–G) and input rows of all slots; column G is empty if the sheet has none yet. */
+function slotValues_(sheet) {
+  const columns = Math.min(sheet.getMaxColumns(), ID_COL);
+  return sheet.getRange(FIRST_ROW, 1, SLOT_COUNT * ROWS_PER_SLOT, columns).getValues().map(function (row) {
+    while (row.length < ID_COL) row.push('');
+    return row;
+  });
+}
+
+/**
+ * Used slots in sheet order: exercise ID, shown name and input row (kg, sets, failure).
+ * The ID in column G counts; only slots without ID (old sheets) are matched by name.
+ */
+function readSlots_(sheet, ctx) {
+  const values = slotValues_(sheet);
   const used = [];
   for (let slot = 0; slot < SLOT_COUNT; slot++) {
     const base = slot * ROWS_PER_SLOT;
-    const exName = String(values[base][0] || '');
-    if (exName && exName !== NO_EXERCISE) used.push({ name: exName, inputs: values[base + 1] });
+    const name = String(values[base][0] || '');
+    let id = String(values[base][ID_COL - 1] || '');
+    if (!id && name && name !== NO_EXERCISE) id = ctx.idByName[name] || '';
+    if (!id && (!name || name === NO_EXERCISE)) continue;
+    used.push({ id: id, name: name, inputs: values[base + 1].slice(0, INPUT_COLS) });
   }
   return used;
 }
 
 /** Moves the exercise in the given slot to a new position (1-based); the others shift. */
-function moveSlot_(sheet, fromSlot, toPosition) {
-  const used = readSlots_(sheet);
+function moveSlot_(sheet, fromSlot, toPosition, ctx) {
+  const used = readSlots_(sheet, ctx);
   if (fromSlot < used.length && toPosition >= 1 && toPosition <= used.length) {
     const moved = used.splice(fromSlot, 1)[0];
     used.splice(toPosition - 1, 0, moved);
   }
-  writeSlots_(sheet, used);   // also restores the number if the selection was invalid
+  writeSlots_(sheet, used, ctx);   // also restores the number if the selection was invalid
 }
 
 /**
  * Writes the slots in the given order from the top, clears the rest, renumbers
  * the positions and shows only the used slots plus one empty slot for adding.
- * Name rows are merged across A–E: only column A (name) and F (position) are written there.
+ * The shown name always comes from sheet "Übungen" via the ID.
+ * Name rows are merged across A–E: only column A (name), F (position) and G (ID) are written there.
  */
-function writeSlots_(sheet, used) {
+function writeSlots_(sheet, used, ctx) {
+  ensureIdColumn_(sheet);
   const columnA = [];
   const columnF = [];
+  const columnG = [];
   const emptyInputs = ['', '', '', '', '', false];
   for (let slot = 0; slot < SLOT_COUNT; slot++) {
     const entry = used[slot];
     const inputs = entry ? entry.inputs.map(function (v, i) { return i === 5 ? v === true : v; }) : emptyInputs;
-    columnA.push([entry ? entry.name : ''], [inputs[0]], ['']);      // name, kg, info (rewritten by refreshInfo_())
+    const exercise = entry && ctx.exercises[entry.id];
+    columnA.push([entry ? (exercise ? exercise.name : entry.name || entry.id) : ''], [inputs[0]], ['']);
     columnF.push([entry ? slot + 1 : ''], [inputs[5]], ['']);       // position, failure, info
+    columnG.push([entry ? entry.id : ''], [''], ['']);
     sheet.getRange(nameRow_(slot) + 1, 2, 1, 4).setValues([inputs.slice(1, 5)]);
   }
   sheet.getRange(FIRST_ROW, 1, columnA.length, 1).setValues(columnA);
   sheet.getRange(FIRST_ROW, POSITION_COL, columnF.length, 1).setValues(columnF);
+  sheet.getRange(FIRST_ROW, ID_COL, columnG.length, 1).setValues(columnG);
   updatePositionDropdowns_(sheet, used.length);
   updateSlotVisibility_(sheet, used.length);
 }
@@ -167,37 +273,32 @@ function saveTraining_(sheet) {
     const dateText = Utilities.formatDate(date, tz, 'dd.MM.yyyy');
     const isDeload = sheet.getRange(CELL.deload).getValue() === true;
     const note = String(sheet.getRange(CELL.note).getValue() || '');
-    const exercises = loadExercises_(ss);
-
-    const values = slotBlockRange_(sheet).getValues();
+    const ctx = loadContext_(ss);
     const now = new Date();
     const rows = [];
     const errors = [];
     let exerciseCount = 0;
 
-    for (let slot = 0; slot < SLOT_COUNT; slot++) {
-      const exName = String(values[slot * ROWS_PER_SLOT][0] || '');
-      const inputs = values[slot * ROWS_PER_SLOT + 1];
-      const kg = inputs[0];
-      const failure = inputs[5] === true;
-      if (!exName || exName === NO_EXERCISE) continue;
+    readSlots_(sheet, ctx).forEach(function (slot) {
+      const kg = slot.inputs[0];
+      const failure = slot.inputs[5] === true;
       const sets = [];
-      inputs.slice(1, 5).forEach(function (reps, i) { if (reps !== '') sets.push({ no: i + 1, reps: reps }); });
-      if (!sets.length) continue;                       // no sets = exercise not done
+      slot.inputs.slice(1, 5).forEach(function (reps, i) { if (reps !== '') sets.push({ no: i + 1, reps: reps }); });
+      if (!sets.length) return;                         // no sets = exercise not done
 
-      const ex = exercises[exName];
-      if (!ex) { errors.push(exName + ': nicht im Übungsstamm'); continue; }
-      if (typeof kg !== 'number') { errors.push(exName + ': Gewicht fehlt'); continue; }
+      const ex = ctx.exercises[slot.id];
+      if (!ex) { errors.push((slot.name || slot.id) + ': nicht im Übungsstamm'); return; }
+      if (typeof kg !== 'number') { errors.push(ex.name + ': Gewicht fehlt'); return; }
       if (sets.some(function (s) { return typeof s.reps !== 'number'; })) {
-        errors.push(exName + ': Wiederholungen keine Zahl'); continue;
+        errors.push(ex.name + ': Wiederholungen keine Zahl'); return;
       }
       exerciseCount++;
       sets.forEach(function (s, i) {
         const isLastSet = i === sets.length - 1;
-        rows.push([date, day, ex.id, exName, ex.muscleGroup, s.no, kg, s.reps,
+        rows.push([date, day, slot.id, ex.name, ex.muscleGroup, s.no, kg, s.reps,
           failure && isLastSet, isDeload, now, note]);
       });
-    }
+    });
 
     if (errors.length) return abort_(sheet, 'Nicht gespeichert – ' + errors.join('; '));
     if (!rows.length) return abort_(sheet, 'Nicht gespeichert: keine Übung mit Gewicht und Satz eingetragen.');
@@ -268,17 +369,18 @@ function refreshExerciseList_(ss) {
 }
 
 // ===== Info row: "zuletzt" and "Ziel heute" (section 9) ======================
+/** Exercises from sheet "Übungen" by ID. */
 function loadExercises_(ss) {
-  const byName = {};
+  const byId = {};
   ss.getSheetByName(SHEET.exercises).getDataRange().getValues().slice(1).forEach(function (r) {
-    if (!r[EX.name]) return;
-    byName[String(r[EX.name])] = {
-      id: r[EX.id], muscleGroup: r[EX.muscleGroup], type: r[EX.type],
+    if (!r[EX.id] || !r[EX.name]) return;
+    byId[String(r[EX.id])] = {
+      id: String(r[EX.id]), name: String(r[EX.name]), muscleGroup: r[EX.muscleGroup], type: r[EX.type],
       repsMin: Number(r[EX.repsMin]), repsMax: Number(r[EX.repsMax]),
       increment: Number(r[EX.increment]) || 0, weightType: r[EX.weightType]
     };
   });
-  return byName;
+  return byId;
 }
 
 /** Reads exercises and log once; keeps the latest non-deload session per exercise ID. */
@@ -298,32 +400,40 @@ function loadContext_(ss) {
       else if (key === s.key) s.sets.push(set);
     });
   }
-  return { exercises: loadExercises_(ss), lastSession: lastSession, tz: tz };
+  const exercises = loadExercises_(ss);
+  const idByName = {};
+  Object.keys(exercises).forEach(function (id) { idByName[exercises[id].name] = id; });
+  return { exercises: exercises, idByName: idByName, lastSession: lastSession, tz: tz };
 }
 
 function refreshAllInfo_(ss) {
   const ctx = loadContext_(ss);
-  daySheets_(ss).forEach(function (day) {
-    const sheet = ss.getSheetByName(day);
-    if (sheet) refreshInfo_(sheet, ctx);
-  });
+  daySheets_(ss).forEach(function (sheet) { refreshInfo_(sheet, ctx); });
 }
 
-/** Writes the info rows of one input sheet; only changed cells are written. */
+/**
+ * Writes the info rows of one input sheet and shows the current name from "Übungen"
+ * for every slot (follows renamed exercises); only changed cells are written.
+ */
 function refreshInfo_(sheet, ctx) {
-  const values = sheet.getRange(FIRST_ROW, 1, SLOT_COUNT * ROWS_PER_SLOT, 1).getValues();
+  const values = slotValues_(sheet);
   const isDeload = sheet.getRange(CELL.deload).getValue() === true;
   for (let slot = 0; slot < SLOT_COUNT; slot++) {
     const base = slot * ROWS_PER_SLOT;
-    const exName = String(values[base][0] || '');
-    const text = exName && exName !== NO_EXERCISE ? buildInfoText_(exName, ctx, isDeload) : '';
+    const name = String(values[base][0] || '');
+    let id = String(values[base][ID_COL - 1] || '');
+    if (!id && name && name !== NO_EXERCISE) id = ctx.idByName[name] || '';
+    const ex = ctx.exercises[id];
+    if (ex && ex.name !== name) sheet.getRange(FIRST_ROW + base, 1).setValue(ex.name);
+    const isUsed = id || (name && name !== NO_EXERCISE);
+    const text = isUsed ? buildInfoText_(id, ctx, isDeload) : '';
     if (text !== values[base + 2][0]) sheet.getRange(FIRST_ROW + base + 2, 1).setValue(text);
   }
 }
 
 /** Progression rules, first match wins (requirements spec section 9). */
-function buildInfoText_(exName, ctx, isDeload) {
-  const ex = ctx.exercises[exName];
+function buildInfoText_(id, ctx, isDeload) {
+  const ex = ctx.exercises[id];
   if (!ex) return 'nicht im Übungsstamm';
   const session = ctx.lastSession[ex.id];
   if (!session) return 'neu · ' + ex.repsMin + '–' + ex.repsMax + ' Wdh';            // rule 1

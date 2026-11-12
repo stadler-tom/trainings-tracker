@@ -20,13 +20,15 @@ Die Schritte 1 bis 5 machst du am PC, Schritt 6 und 7 am iPhone.
 
 > Arbeite ab jetzt nur noch in deiner Kopie.
 
-## 2. Trainingstage eintragen
+## 2. Trainingstage anlegen
 
-1. Öffne in deiner Kopie das Blatt **Einstellungen**.
-2. Trage in Spalte A ab Zeile 2 deine Trainingstage ein, einen pro Zeile, 1 bis 7 Tage. Beispiele: `Beine`, `Push`, `Pull`, `Upper` oder `Ganzkörper A`, `Ganzkörper B`.
-3. Vorbelegte Namen, die du nicht brauchst, überschreiben oder die Zelle leeren (Entf-Taste).
+Jeder Trainingstag ist ein eigenes Tabellenblatt. Der Name des Reiters unten ist der Name in der App, und er steht nur dort.
 
-Die Namen erscheinen später so als Knöpfe in der App. Ändere sie nach der Einrichtung nicht mehr.
+1. Den Reiter **Training A** umbenennen (Rechtsklick auf den Reiter → **Umbenennen**), zum Beispiel in `Push` oder `Ganzkörper A`.
+2. Für jeden weiteren Tag: Rechtsklick auf einen Tages-Reiter → **Duplizieren**, dann die Kopie umbenennen.
+3. Die Reihenfolge der Reiter (mit der Maus ziehen) ist die Reihenfolge der Knöpfe in der App.
+
+Die Übungen pro Tag wählst du später bequem in der App aus.
 
 ## 3. Einrichtung ausführen
 
@@ -37,9 +39,7 @@ Die Namen erscheinen später so als Knöpfe in der App. Ändere sie nach der Ein
    1. **Berechtigungen prüfen** klicken und dein Google-Konto wählen.
    2. Es erscheint „Google hat diese App nicht überprüft“. Das ist normal, das Script stammt aus deiner eigenen Kopie. Klicke **Erweitert** und dann **Zu … wechseln (unsicher)**.
    3. Falls Häkchen angeboten werden: alle setzen. Dann **Zulassen** bzw. **Weiter**.
-5. Wechsle zurück zum Tab mit deinem Sheet. Dort steht die Meldung „Fertig. Neu angelegte Trainingstage: …“. Mit **OK** schließen.
-
-Für jeden Trainingstag gibt es jetzt ein eigenes Blatt. Die Übungen pro Tag wählst du später bequem in der App aus.
+5. Wechsle zurück zum Tab mit deinem Sheet. Dort steht die Meldung „Fertig. Trainingstage: …“ mit deinen Tagen. Mit **OK** schließen.
 
 ## 4. Web-App bereitstellen
 
@@ -109,7 +109,12 @@ Wichtig: Den Link in den Einstellungen der App einfügen, nicht in Safari öffne
 
 ## Das Sheet
 
+- **Tagesblätter:** ein Blatt pro Trainingstag, der Reitername ist der Tagesname.
+  - **Umbenennen:** nur den Reiter umbenennen. Beim nächsten Öffnen der App steht der neue Name überall, auch bei allen alten Einträgen im Log.
+  - **Neuer Tag:** Tagesblatt duplizieren und umbenennen. **Tag entfernen:** Reiter löschen; die alten Einträge im Log bleiben.
+  - Änderungen am Sheet sieht die App beim nächsten Öffnen. Ist sie noch im Hintergrund offen, in der App-Übersicht nach oben wischen und neu öffnen.
 - **Übungen:** Übungsstamm mit Beispielübungen. Neue Übung = neue Zeile mit neuer ID (z. B. `E28`). Übungen nie löschen, sondern **Aktiv** auf `nein` setzen.
+  - Den Namen einer Übung änderst du nur hier, Tagesblätter und App übernehmen ihn. Die **ID** nie ändern: Über sie hängen Verlauf und Tagesauswahl an der Übung.
   - **Gewichtssprung:** Schritt der +/−-Knöpfe, z. B. 2,5 bei Kurzhanteln, 1,25 am Kabel, 5 an Maschinen.
   - **Stangengewicht kg:** aktiviert den Scheibenrechner, z. B. 20 bei der Langhantel, 0 bei der Multipresse (nur Scheiben). Leer = kein Scheibenrechner.
 - **Log:** alle gespeicherten Sätze. Korrekturen direkt hier.
@@ -136,6 +141,6 @@ Danach reicht nach jedem Training **Daten → Alle aktualisieren**.
 | Die Adresse endet auf /dev | Du hast die Test-Adresse des Editors erwischt. showSetupLink erneut ausführen und die Web-App-URL aus Schritt 4 einfügen. |
 | Der Schlüssel ist falsch | Einrichtungslink mit showSetupLink neu anzeigen und in der App erneut übernehmen. |
 | Script im Sheet veraltet | Anleitung [Script aktualisieren](UPDATE.md) befolgen. |
-| Diesen Trainingstag gibt es im Sheet nicht | Tagesname im Blatt Einstellungen prüfen und setupApi erneut ausführen. |
+| Diesen Trainingstag gibt es im Sheet nicht mehr | Das Tagesblatt wurde gelöscht. In der App „Training verwerfen“ und einen anderen Tag wählen. Ein umbenannter Reiter löst diese Meldung nicht aus. |
 
-setupApi darfst du jederzeit erneut ausführen. Es ergänzt nur, was fehlt, und ändert keine Daten. Neue Trainingstage im Blatt Einstellungen werden so als Blatt angelegt.
+setupApi darfst du jederzeit erneut ausführen. Es ergänzt nur, was fehlt, und ändert keine Daten.
