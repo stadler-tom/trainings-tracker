@@ -253,7 +253,8 @@ function buildHelpSheet_(ss) {
     ['Tagesblätter: Übungsauswahl je Trainingstag. Die App liest und schreibt sie; Eingabe direkt im Sheet ist ebenfalls möglich.'],
     [''],
     ['EXCEL-AUSWERTUNG'],
-    ['Datei → Freigeben → Im Web veröffentlichen → je Blatt Log, Körper und Übungen als CSV veröffentlichen'],
+    ['Excel-Datei: template/Trainings-Auswertung.xlsx im Repository (Link oben) herunterladen.'],
+    ['Datei → Freigeben → Im Web veröffentlichen → je Blatt Log, Übungen und Körper als CSV veröffentlichen'],
     ['und die drei Links in der Excel-Datei im Blatt Einstellungen eintragen.']
   ];
   sheet.getRange(1, 1, lines.length, 1).setValues(lines);
@@ -263,7 +264,6 @@ function buildHelpSheet_(ss) {
   sheet.setHiddenGridlines(true);
 }
 
-// ===== Helpers ================================================================
 // ===== Helpers ================================================================
 function exercisesById_() {
   const byId = {};
