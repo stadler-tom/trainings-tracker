@@ -12,7 +12,8 @@
  * Error codes are English; the app shows German messages.
  */
 
-const API_VERSION = '1.0.0';
+const API_VERSION = '1.0.1';
+const APP_URL = 'https://stadler-tom.github.io/trainings-tracker/';
 const KEY_PROPERTY = 'API_KEY';
 const CLIENT_IDS_PROPERTY = 'SAVED_CLIENT_IDS';
 const CLIENT_IDS_KEPT = 200;
@@ -68,6 +69,18 @@ function setupApi() {
   ensureExerciseColumns_(SpreadsheetApp.getActive());
   Logger.log('API key: ' + key);
   Logger.log('Next step: Deploy > New deployment > Web app (execute as: me, access: anyone).');
+}
+
+/**
+ * Run from the editor after deploying as a web app: writes the setup link to the log.
+ * Copy it and paste it into the app (Einstellungen → Einrichtungslink).
+ */
+function showSetupLink() {
+  const key = PropertiesService.getScriptProperties().getProperty(KEY_PROPERTY);
+  const url = ScriptApp.getService().getUrl();
+  if (!key) throw new Error('No API key yet: run setupApi first.');
+  if (!url) throw new Error('Not deployed yet: Deploy > New deployment > Web app.');
+  Logger.log(APP_URL + '#api=' + encodeURIComponent(url) + '&key=' + key);
 }
 
 // ===== Actions =================================================================

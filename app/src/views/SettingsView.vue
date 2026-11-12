@@ -1,5 +1,65 @@
 <script setup lang="ts">
-const emit = defineEmits<{ back: [] }>();
+import { computed, ref } from 'vue';
+import { errorMessage, isOlderVersion, MIN_API_VERSION, ping } from '../api';
+import { DEFAULT_PLATES, parseSetupLink, type Settings } from '../storage';
+
+const props = defineProps<{ settings: Settings; apiVersion: string | null }>();
+const emit = defineEmits<{ save: [settings: Settings]; back: [] }>();
+
+const apiUrl = ref(props.settings.apiUrl);
+const apiKey = ref(props.settings.apiKey);
+const plates = ref(props.settings.plates.join('; ').replace(/\./g, ','));
+const setupLink = ref('');
+const testResult = ref('');
+const testFailed = ref(false);
+const testing = ref(false);
+
+const appVersion = __APP_VERSION__;
+const apiOutdated = computed(() => props.apiVersion !== null && isOlderVersion(props.apiVersion, MIN_API_VERSION));
+
+function applyLink() {
+  const parsed = parseSetupLink(setupLink.value.trim());
+  if (!parsed) {
+    testFailed.value = true;
+    testResult.value = 'Das ist kein gültiger Einrichtungslink.';
+    return;
+  }
+  apiUrl.value = parsed.apiUrl;
+  apiKey.value = parsed.apiKey;
+  setupLink.value = '';
+  testConnection();
+}
+
+function current(): Settings {
+  const parsedPlates = plates.value
+    .split(/[;\s]+/)
+    .map((p) => Number(p.replace(',', '.')))
+    .filter((p) => p > 0)
+    .sort((a, b) => b - a);
+  return {
+    apiUrl: apiUrl.value.trim(),
+    apiKey: apiKey.value.trim(),
+    plates: parsedPlates.length ? parsedPlates : DEFAULT_PLATES,
+  };
+}
+
+async function testConnection() {
+  testing.value = true;
+  testResult.value = '';
+  try {
+    const result = await ping(current());
+    testFailed.value = false;
+    testResult.value = `Verbunden mit „${result.sheetName}“ (Web-API ${result.apiVersion}).`;
+    if (isOlderVersion(result.apiVersion, MIN_API_VERSION)) {
+      testResult.value += ` Bitte das Script im Sheet aktualisieren (mindestens ${MIN_API_VERSION}).`;
+    }
+  } catch (error) {
+    testFailed.value = true;
+    testResult.value = errorMessage(error);
+  } finally {
+    testing.value = false;
+  }
+}
 </script>
 
 <template>
@@ -8,6 +68,32 @@ const emit = defineEmits<{ back: [] }>();
       <button class="ghost" @click="emit('back')">‹ Zurück</button>
       <h1>Einstellungen</h1>
     </header>
-    <p class="muted">Hier kommen Web-API-Adresse, Schlüssel und Hantelscheiben hin (Lastenheft Abschnitt 4.9).</p>
+
+    <section class="card">
+      <h2>Einrichtungslink</h2>
+      <p class="muted">Den Link aus dem Script deines Sheets hier einfügen. Adresse und Schlüssel werden übernommen.</p>
+      <input v-model="setupLink" type="url" placeholder="https://…#api=…&key=…" autocomplete="off" />
+      <button @click="applyLink">Link übernehmen</button>
+    </section>
+
+    <section class="card">
+      <h2>Verbindung</h2>
+      <label>Web-API-Adresse<input v-model="apiUrl" type="url" placeholder="https://script.google.com/…/exec" autocomplete="off" /></label>
+      <label>Schlüssel<input v-model="apiKey" type="password" autocomplete="off" /></label>
+      <button :disabled="testing" @click="testConnection">{{ testing ? 'Teste …' : 'Verbindung testen' }}</button>
+      <p v-if="testResult" class="message" :class="{ error: testFailed, success: !testFailed }">{{ testResult }}</p>
+    </section>
+
+    <section class="card">
+      <h2>Hantelscheiben</h2>
+      <label>Verfügbare Scheiben in kg, getrennt durch Semikolon<input v-model="plates" inputmode="decimal" /></label>
+    </section>
+
+    <button class="big primary" @click="emit('save', current())">Speichern</button>
+
+    <p class="muted small">
+      App {{ appVersion }} · Web-API {{ apiVersion ?? 'unbekannt' }}
+      <span v-if="apiOutdated"> · Script im Sheet veraltet, bitte aktualisieren</span>
+    </p>
   </main>
 </template>
