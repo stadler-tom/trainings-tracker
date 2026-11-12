@@ -12,7 +12,7 @@
  * Error codes are English; the app shows German messages.
  */
 
-const API_VERSION = '1.0.2';
+const API_VERSION = '1.1.0';
 const APP_URL = 'https://stadler-tom.github.io/trainings-tracker/';
 const KEY_PROPERTY = 'API_KEY';
 const CLIENT_IDS_PROPERTY = 'SAVED_CLIENT_IDS';
@@ -56,20 +56,27 @@ function handle_(action, key, payload) {
 }
 
 /**
- * Run once from the Apps Script editor (requirements spec section 7.2):
- * creates the key if missing, adds the extra exercise columns if missing,
- * and writes the key to the execution log.
+ * Run once from the Apps Script editor (requirements spec section 7.2).
+ * Safe to run again at any time; it only adds what is missing:
+ * sheet "Einstellungen", sheets for the training days, the two extra exercise columns
+ * and the key. Existing data is never changed.
  */
 function setupApi() {
+  const ss = SpreadsheetApp.getActive();
   const properties = PropertiesService.getScriptProperties();
   let key = properties.getProperty(KEY_PROPERTY);
   if (!key) {
     key = Utilities.getUuid().replace(/-/g, '');
     properties.setProperty(KEY_PROPERTY, key);
   }
-  ensureExerciseColumns_(SpreadsheetApp.getActive());
-  Logger.log('API key: ' + key);
-  Logger.log('Next step: Deploy > New deployment > Web app (execute as: me, access: anyone).');
+  const created = applyDays();
+  ensureExerciseColumns_(ss);
+  refreshExerciseList_(ss);
+  Logger.log('API key created. New day sheets: ' + (created.length ? created.join(', ') : 'none'));
+  SpreadsheetApp.getUi().alert('Einrichtung', 'Fertig. ' +
+    (created.length ? 'Neu angelegte Trainingstage: ' + created.join(', ') + '. ' : '') +
+    'Nächster Schritt laut Anleitung: Bereitstellen → Neue Bereitstellung → Web-App.',
+    SpreadsheetApp.getUi().ButtonSet.OK);
 }
 
 /**
@@ -143,7 +150,7 @@ function getState_() {
     if (s) s.sets.sort(function (a, b) { return a.set - b.set; });
   });
 
-  const days = DAY_SHEETS.map(function (name) {
+  const days = daySheets_(ss).filter(function (name) { return ss.getSheetByName(name); }).map(function (name) {
     const sheet = ss.getSheetByName(name);
     const slots = sheet ? readSlots_(sheet).map(function (slot) { return nameToId[slot.name] || null; }) : [];
     return { name: name, lastDate: lastDateByDay[name] || null, exerciseIds: slots.filter(Boolean) };
@@ -162,7 +169,7 @@ function saveTrainingFromApp_(p) {
   const tz = ss.getSpreadsheetTimeZone();
   if (!p.clientId) return { ok: false, error: 'missing_client_id' };
   if (wasClientIdSaved_(p.clientId)) return { ok: true, data: { duplicate: true } };
-  if (DAY_SHEETS.indexOf(p.day) < 0) return { ok: false, error: 'unknown_day' };
+  if (daySheets_(ss).indexOf(p.day) < 0 || !ss.getSheetByName(p.day)) return { ok: false, error: 'unknown_day' };
   const date = parseIsoDate_(p.date);
   if (!date) return { ok: false, error: 'invalid_date' };
 
@@ -208,7 +215,7 @@ function saveTrainingFromApp_(p) {
 /** Writes the exercise order of one day sheet (section 4.2). Payload: { day, exerciseIds: [...] } */
 function updateDaySlots_(p) {
   const ss = SpreadsheetApp.getActive();
-  if (DAY_SHEETS.indexOf(p.day) < 0) return { ok: false, error: 'unknown_day' };
+  if (daySheets_(ss).indexOf(p.day) < 0 || !ss.getSheetByName(p.day)) return { ok: false, error: 'unknown_day' };
   const ids = p.exerciseIds || [];
   if (ids.length > SLOT_COUNT) return { ok: false, error: 'too_many_exercises' };
   const byId = {};

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { errorMessage, isOlderVersion, MIN_API_VERSION, ping } from '../api';
+import { errorMessage, isOlderVersion, MIN_API_VERSION, ping, UPDATE_GUIDE_URL } from '../api';
 import { DEFAULT_PLATES, parseSetupLink, type Settings } from '../storage';
 
 const props = defineProps<{ settings: Settings; apiVersion: string | null }>();
@@ -93,7 +93,10 @@ async function testConnection() {
 
     <p class="muted small">
       App {{ appVersion }} · Web-API {{ apiVersion ?? 'unbekannt' }}
-      <span v-if="apiOutdated"> · Script im Sheet veraltet, bitte aktualisieren</span>
+    </p>
+    <p v-if="apiOutdated" class="message error">
+      Das Script in deinem Sheet ist älter als diese App braucht (mindestens {{ MIN_API_VERSION }}).
+      <a :href="UPDATE_GUIDE_URL" target="_blank" rel="noopener">Anleitung zum Aktualisieren</a>
     </p>
   </main>
 </template>

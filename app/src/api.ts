@@ -3,7 +3,8 @@
 
 import type { Settings } from './storage';
 
-export const MIN_API_VERSION = '1.0.0';
+export const MIN_API_VERSION = '1.1.0';
+export const UPDATE_GUIDE_URL = 'https://github.com/stadler-tom/trainings-tracker/blob/main/template/UPDATE.md';
 
 export interface Exercise {
   id: string;
@@ -64,6 +65,11 @@ const MESSAGES: Record<string, string> = {
   busy: 'Das Sheet ist gerade beschäftigt. Bitte gleich noch einmal versuchen.',
   unknown_exercise: 'Eine Übung fehlt im Übungsstamm des Sheets.',
   unknown_day: 'Diesen Trainingstag gibt es im Sheet nicht.',
+  invalid_date: 'Das Datum ist ungültig.',
+  too_many_exercises: 'Ein Trainingstag hat höchstens 10 Übungen.',
+  missing_client_id: 'Die App hat eine unvollständige Anfrage gesendet. Bitte die Seite neu laden.',
+  unknown_action: 'Das Script im Sheet ist zu alt für diese App. Bitte das Script aktualisieren.',
+  server_error: 'Im Script des Sheets ist ein Fehler aufgetreten',
 };
 
 /** German message for an error, for display in the app. */
@@ -112,3 +118,21 @@ export function isOlderVersion(a: string, b: string): boolean {
   }
   return false;
 }
+
+export interface SavePayload {
+  clientId: string;
+  day: string;
+  date: string;                                  // yyyy-MM-dd
+  deload: boolean;
+  note: string;
+  exercises: { id: string; kg: number | null; reps: (number | null)[]; failure: boolean }[];
+}
+
+export const saveTraining = (settings: Settings, payload: SavePayload) =>
+  call<{ savedSets?: number; duplicate?: boolean }>(settings, 'saveTraining', payload);
+
+export const updateDaySlots = (settings: Settings, day: string, exerciseIds: string[]) =>
+  call<{ exerciseIds: string[] }>(settings, 'updateDaySlots', { day, exerciseIds });
+
+export const updateExerciseNote = (settings: Settings, id: string, note: string) =>
+  call<{ id: string }>(settings, 'updateExerciseNote', { id, note });

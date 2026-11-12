@@ -1,19 +1,26 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { onMounted, ref, watch } from 'vue';
 import StartView from './views/StartView.vue';
 import TrainingView from './views/TrainingView.vue';
 import SettingsView from './views/SettingsView.vue';
 import { errorMessage, getState, type State } from './api';
+import { loadDraft, newDraft, removeDraft, saveDraft, type Draft } from './draft';
 import { loadSettings, parseSetupLink, saveSettings, type Settings } from './storage';
 
 // Three screens are enough for a simple switch; no router needed.
 type Screen = 'start' | 'training' | 'settings';
 const screen = ref<Screen>('start');
-const selectedDay = ref<string | null>(null);
 const settings = ref<Settings>(loadSettings());
 const state = ref<State | null>(null);
+const draft = ref<Draft | null>(loadDraft());
 const loading = ref(false);
 const loadError = ref('');
+
+// every change of the running training is stored at once (section 4.2)
+watch(draft, (current) => {
+  if (current?.touched) saveDraft(current);
+  else removeDraft();
+}, { deep: true });
 
 async function reload() {
   if (!settings.value.apiUrl || !settings.value.apiKey) {
@@ -24,6 +31,10 @@ async function reload() {
   loadError.value = '';
   try {
     state.value = await getState(settings.value);
+    // a training opened before the data arrived gets its exercises now
+    if (draft.value && !draft.value.touched && draft.value.items.length === 0) {
+      draft.value = newDraft(state.value, draft.value.day, draft.value.date);
+    }
   } catch (error) {
     loadError.value = errorMessage(error);
   } finally {
@@ -32,8 +43,27 @@ async function reload() {
 }
 
 function openDay(day: string) {
-  selectedDay.value = day;
+  const running = draft.value;
+  if (running?.touched && running.day !== day &&
+      !confirm(`Das ungespeicherte Training „${running.day}“ verwerfen und „${day}“ beginnen?`)) {
+    return;
+  }
+  if (!running || running.day !== day || !running.touched) {
+    draft.value = state.value
+      ? newDraft(state.value, day)
+      : newDraftPlaceholder(day);
+  }
   screen.value = 'training';
+}
+
+/** Training opened before the data arrived; reload() fills in the exercises. */
+function newDraftPlaceholder(day: string): Draft {
+  return newDraft({ apiVersion: '', days: [], exercises: [], history: {} }, day);
+}
+
+function discardTraining() {
+  draft.value = null;
+  screen.value = 'start';
 }
 
 function applySettings(updated: Settings) {
@@ -51,6 +81,8 @@ onMounted(() => {
     history.replaceState(null, '', location.pathname);
     return;
   }
+  // an unsaved training continues right away (section 4.1)
+  if (draft.value?.touched) screen.value = 'training';
   reload();
 });
 </script>
@@ -62,10 +94,27 @@ onMounted(() => {
     :state="state"
     :loading="loading"
     :error="loadError"
+    :running-day="draft?.touched ? draft.day : null"
     @open-day="openDay"
     @open-settings="screen = 'settings'"
     @reload="reload"
   />
-  <TrainingView v-else-if="screen === 'training'" :day="selectedDay" @back="screen = 'start'" />
-  <SettingsView v-else :settings="settings" :api-version="state?.apiVersion ?? null" @save="applySettings" @back="screen = 'start'" />
+  <TrainingView
+    v-else-if="screen === 'training' && draft"
+    :draft="draft"
+    :state="state"
+    :settings="settings"
+    :load-error="loadError"
+    :reload="reload"
+    @back="screen = 'start'"
+    @discard="discardTraining"
+    @saved="draft = $event"
+  />
+  <SettingsView
+    v-else-if="screen === 'settings'"
+    :settings="settings"
+    :api-version="state?.apiVersion ?? null"
+    @save="applySettings"
+    @back="screen = 'start'"
+  />
 </template>

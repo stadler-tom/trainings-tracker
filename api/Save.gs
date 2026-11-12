@@ -13,8 +13,20 @@
  */
 
 // ===== Configuration (shared with Setup.gs) ==================================
-const DAY_SHEETS = ['Beine', 'Push', 'Pull', 'Upper'];
-const SHEET = { exercises: 'Übungen', log: 'Log', body: 'Körper', help: 'Hilfe', lists: '_lists' };
+const SHEET = { settings: 'Einstellungen', exercises: 'Übungen', log: 'Log', body: 'Körper', help: 'Hilfe', lists: '_lists' };
+// Used when a sheet has no "Einstellungen" sheet yet (trackers created before version 1 of the app).
+const DEFAULT_DAYS = ['Beine', 'Push', 'Pull', 'Upper'];
+const MAX_DAYS = 7;
+
+/** Training day names from sheet "Einstellungen" (A2:A8), in order. */
+function daySheets_(ss) {
+  const settings = ss.getSheetByName(SHEET.settings);
+  if (!settings) return DEFAULT_DAYS.slice();
+  const names = settings.getRange(2, 1, MAX_DAYS, 1).getValues()
+    .map(function (r) { return String(r[0] || '').trim(); })
+    .filter(function (name) { return name !== ''; });
+  return names.length ? names : DEFAULT_DAYS.slice();
+}
 
 // Each slot uses three rows: exercise name + position, inputs, info.
 const FIRST_ROW = 5;
@@ -46,7 +58,7 @@ function onEdit(e) {
 
   if (name === SHEET.exercises) { refreshExerciseList_(ss); refreshAllInfo_(ss); return; }
   if (name === SHEET.log) { refreshAllInfo_(ss); return; }
-  if (DAY_SHEETS.indexOf(name) < 0) return;
+  if (daySheets_(ss).indexOf(name) < 0) return;
 
   const a1 = range.getA1Notation();
   if (a1 === CELL.save) {
@@ -291,7 +303,10 @@ function loadContext_(ss) {
 
 function refreshAllInfo_(ss) {
   const ctx = loadContext_(ss);
-  DAY_SHEETS.forEach(function (day) { refreshInfo_(ss.getSheetByName(day), ctx); });
+  daySheets_(ss).forEach(function (day) {
+    const sheet = ss.getSheetByName(day);
+    if (sheet) refreshInfo_(sheet, ctx);
+  });
 }
 
 /** Writes the info rows of one input sheet; only changed cells are written. */
