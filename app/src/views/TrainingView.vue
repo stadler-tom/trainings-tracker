@@ -6,6 +6,7 @@ import { buildPayload, MAX_EXERCISES, newDraft, newItem, parseKg, type Draft } f
 import type { Settings } from '../storage';
 import { targetToday } from '../training';
 import ExerciseCard from './ExerciseCard.vue';
+import LoadingSpinner from './LoadingSpinner.vue';
 import ToolsOverlay from './ToolsOverlay.vue';
 
 const props = defineProps<{
@@ -171,7 +172,7 @@ function discard() {
       </label>
     </section>
 
-    <p v-if="!state" class="muted">Lade Übungen und letzte Werte …</p>
+    <LoadingSpinner v-if="!state" label="Lade Übungen und letzte Werte …" />
 
     <ExerciseCard
       v-for="(item, index) in draft.items"

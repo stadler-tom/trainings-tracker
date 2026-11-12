@@ -2,6 +2,7 @@
 import { computed } from 'vue';
 import { isOlderVersion, MIN_API_VERSION, UPDATE_GUIDE_URL, type State } from '../api';
 import { formatIsoDate } from '../format';
+import LoadingSpinner from './LoadingSpinner.vue';
 
 const props = defineProps<{
   configured: boolean;
@@ -13,6 +14,11 @@ const props = defineProps<{
 const emit = defineEmits<{ openDay: [day: string]; openSettings: []; reload: [] }>();
 
 const apiOutdated = computed(() => props.state != null && isOlderVersion(props.state.apiVersion, MIN_API_VERSION));
+
+// The day cards slide in one after another only when they arrive from loading,
+// not every time the start screen is shown again with data already there.
+const animateDays = !props.state;
+const STAGGER_MS = 80;
 </script>
 
 <template>
@@ -31,7 +37,7 @@ const apiOutdated = computed(() => props.state != null && isOlderVersion(props.s
       <button class="big" @click="emit('openSettings')">Jetzt einrichten</button>
     </template>
 
-    <p v-else-if="loading && !state" class="muted">Lade Trainingstage …</p>
+    <LoadingSpinner v-else-if="loading && !state" label="Lade Trainingstage …" />
 
     <template v-else-if="error && !state">
       <p class="message error">{{ error }}</p>
@@ -43,8 +49,15 @@ const apiOutdated = computed(() => props.state != null && isOlderVersion(props.s
         Das Script in deinem Sheet ist veraltet (mindestens {{ MIN_API_VERSION }} nötig).
         <a :href="UPDATE_GUIDE_URL" target="_blank" rel="noopener">Anleitung zum Aktualisieren</a>
       </p>
-      <p class="muted">Welcher Trainingstag ist heute?</p>
-      <button v-for="day in state.days" :key="day.name" class="big day" @click="emit('openDay', day.name)">
+      <p class="muted" :class="{ 'slide-in': animateDays }">Welcher Trainingstag ist heute?</p>
+      <button
+        v-for="(day, index) in state.days"
+        :key="day.name"
+        class="big day"
+        :class="{ 'slide-in': animateDays }"
+        :style="animateDays ? { animationDelay: `${(index + 1) * STAGGER_MS}ms` } : undefined"
+        @click="emit('openDay', day.name)"
+      >
         <span>{{ day.name }}</span>
         <small class="muted">{{ day.lastDate ? 'zuletzt ' + formatIsoDate(day.lastDate) : 'noch nie' }}</small>
       </button>
@@ -55,4 +68,23 @@ const apiOutdated = computed(() => props.state != null && isOlderVersion(props.s
 
 <style scoped>
 .continue { text-align: center; font-size: 1.05rem; }
+
+.slide-in {
+  animation: slide-in 380ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes slide-in {
+  from { opacity: 0; transform: translateY(14px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+
+/* iPhone setting "Reduce Motion": fade only, no movement */
+@media (prefers-reduced-motion: reduce) {
+  .slide-in { animation-name: fade-in; animation-duration: 200ms; }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
 </style>
