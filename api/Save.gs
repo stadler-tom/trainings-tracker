@@ -16,7 +16,7 @@
  */
 
 // ===== Configuration (shared with Setup.gs and Api.gs) =======================
-const SHEET = { exercises: 'Übungen', log: 'Log', body: 'Körper', help: 'Hilfe', lists: '_lists' };
+const SHEET = { exercises: 'Übungen', log: 'Log', body: 'Körper', help: 'Hilfe', lists: '_lists', settings: 'Einstellungen' };
 
 // Each slot uses three rows: exercise name + position, inputs, info.
 const FIRST_ROW = 5;

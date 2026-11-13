@@ -3,7 +3,7 @@
 
 import type { Settings } from './storage';
 
-export const MIN_API_VERSION = '1.1.0';
+export const MIN_API_VERSION = '1.5.0';     // 1.5.0: data for the deload check
 export const UPDATE_GUIDE_URL = 'https://github.com/stadler-tom/trainings-tracker/blob/main/template/UPDATE.md';
 
 export interface Exercise {
@@ -31,6 +31,12 @@ export interface ExerciseHistory {
   lastSession: { date: string; sets: LoggedSet[] } | null;
   bestE1rm: number;
   bestRepsAtZero: number;
+  recentE1rm?: { date: string; e1rm: number }[];   // last sessions without deload, oldest first (API 1.5.0+)
+}
+
+export interface Session {
+  date: string;
+  deload: boolean;
 }
 
 export interface Day {
@@ -45,6 +51,8 @@ export interface State {
   days: Day[];
   exercises: Exercise[];
   history: Record<string, ExerciseHistory>;
+  sessions?: Session[];            // every training date, oldest first (API 1.5.0+)
+  deloadWeeks?: number;            // sheet "Einstellungen" (API 1.5.0+)
 }
 
 export class ApiError extends Error {

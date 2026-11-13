@@ -3,6 +3,7 @@
 // the saveTraining payload (section 4.3).
 
 import type { SavePayload, State } from './api';
+import { deloadStatus } from './deload';
 import { formatNumber, targetToday } from './training';
 
 export const SET_COUNT = 4;
@@ -79,16 +80,17 @@ export function newItem(state: State, id: string, deload: boolean): DraftItem {
   };
 }
 
-/** Fresh training for a day, in the order of the day sheet. */
+/** Fresh training for a day, in the order of the day sheet; "Deload" is ticked while a deload is due. */
 export function newDraft(state: State, day: string, date = todayIso()): Draft {
   const exerciseIds = state.days.find((d) => d.name === day)?.exerciseIds ?? [];
+  const deload = deloadStatus(state, date).kind !== 'none';
   return {
     clientId: newClientId(),
     day,
     date,
-    deload: false,
+    deload,
     note: '',
-    items: exerciseIds.map((id) => newItem(state, id, false)),
+    items: exerciseIds.map((id) => newItem(state, id, deload)),
     touched: false,
   };
 }

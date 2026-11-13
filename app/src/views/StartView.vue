@@ -2,6 +2,7 @@
 import { computed } from 'vue';
 import { isOlderVersion, MIN_API_VERSION, UPDATE_GUIDE_URL, type State } from '../api';
 import { formatIsoDate } from '../format';
+import { deloadStatus } from '../deload';
 import { todayIso } from '../draft';
 import { daysDoneToday, daysForToday } from '../training';
 import LoadingSpinner from './LoadingSpinner.vue';
@@ -21,6 +22,8 @@ const todayDays = computed(() => (props.state ? daysForToday(props.state.days) :
 const doneDays = computed(() => (props.state ? daysDoneToday(props.state.days, todayIso()) : []));
 
 const apiOutdated = computed(() => props.state != null && isOlderVersion(props.state.apiVersion, MIN_API_VERSION));
+// shown only while a deload is due or running (the box in the training is then ticked)
+const deload = computed(() => (props.state ? deloadStatus(props.state, todayIso()) : null));
 
 // The day cards slide in one after another only when they arrive from loading,
 // not every time the start screen is shown again with data already there.
@@ -56,6 +59,20 @@ const STAGGER_MS = 80;
         Das Script in deinem Sheet ist veraltet (mindestens {{ MIN_API_VERSION }} nötig).
         <a :href="UPDATE_GUIDE_URL" target="_blank" rel="noopener">Anleitung zum Aktualisieren</a>
       </p>
+      <div v-if="deload && deload.kind !== 'none'" class="deload">
+        <strong>{{ deload.kind === 'due' ? 'Deload-Woche fällig' : 'Deload-Woche' }}</strong>
+        <span>{{ deload.reason }} Der Haken „Deload“ ist beim Training schon gesetzt.</span>
+        <details>
+          <summary>Was ist ein Deload?</summary>
+          <p>
+            Eine Woche mit weniger Belastung, damit sich Gelenke, Sehnen und Nervensystem von der
+            Ermüdung der letzten Wochen erholen. Du trainierst ganz normal weiter, aber mit der
+            Hälfte der Sätze, dem gleichen Gewicht und ohne bis ans Versagen zu gehen
+            (3–4 Wiederholungen Reserve). Muskeln gehen dabei nicht verloren. Danach geht es
+            ausgeruht mit voller Kraft weiter.
+          </p>
+        </details>
+      </div>
       <p class="muted" :class="{ 'slide-in': animateDays }">
         Welcher Trainingstag ist heute?
         <span v-if="loading" class="refreshing">· aktualisiere …</span>
@@ -87,6 +104,19 @@ const STAGGER_MS = 80;
 
 <style scoped>
 .continue { text-align: center; font-size: 1.05rem; }
+
+.deload {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border-left: 4px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.deload details { margin-top: 4px; }
+.deload summary { cursor: pointer; color: var(--accent); font-weight: 600; }
+.deload details p { margin: 6px 0 0; }
 .refreshing { font-size: 0.85rem; }
 
 .day.today { outline: 3px solid var(--today); outline-offset: -3px; }

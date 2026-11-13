@@ -13,7 +13,7 @@
  * Error codes are English; the app shows German messages.
  */
 
-const API_VERSION = '1.4.0';
+const API_VERSION = '1.5.0';
 const APP_URL = 'https://stadler-tom.github.io/trainings-tracker/';
 const KEY_PROPERTY = 'API_KEY';
 const RECENT_DATES = 4;                 // trainings per day sent for the "today" hint
@@ -21,6 +21,10 @@ const CLIENT_IDS_PROPERTY = 'SAVED_CLIENT_IDS';
 const WEB_APP_URL_PROPERTY = 'WEB_APP_URL';
 const CLIENT_IDS_KEPT = 200;
 const EXTRA_EXERCISE_COLUMNS = { note: 'Gerätenotiz', barWeight: 'Stangengewicht kg' };
+const RECENT_E1RM_SESSIONS = 3;         // sessions per exercise sent for the deload check
+// sheet "Einstellungen": one setting per row, label in column A, value in column B
+const SETTING_DELOAD_WEEKS = 'Deload spätestens nach (Wochen)';
+const DEFAULT_DELOAD_WEEKS = 8;
 
 // ===== Entry points ===========================================================
 function doPost(e) {
@@ -71,6 +75,7 @@ function setupApi() {
     properties.setProperty(KEY_PROPERTY, Utilities.getUuid().replace(/-/g, ''));
   }
   ensureExerciseColumns_(ss);
+  ensureSettingsSheet_(ss);
   refreshExerciseList_(ss);
   const ctx = loadContext_(ss);
   const days = daySheets_(ss);
@@ -140,27 +145,33 @@ function getState_() {
   const ss = SpreadsheetApp.getActive();
   const days = daySheets_(ss);
   if (dayNamesChanged_(days)) withLock_(function () { return syncDayNames_(ss, days); });   // renamed tabs: log follows first
-  return buildState_(ss, days, readExerciseRows_(ss), readLog_(ss));
+  return buildState_(ss, days, readExerciseRows_(ss), readLog_(ss), readDeloadWeeks_(ss));
 }
 
 /** State from data already read once in this request (getState and saveTraining share it). */
-function buildState_(ss, daySheets, exercises, logRows) {
+function buildState_(ss, daySheets, exercises, logRows, deloadWeeks) {
   const tz = ss.getSpreadsheetTimeZone();
   const idByName = {};
   exercises.forEach(function (ex) { idByName[ex.name] = ex.id; });
 
-  const history = {};          // id -> { lastSession, bestE1rm, bestRepsAtZero }
+  const history = {};          // id -> { lastSession, bestE1rm, bestRepsAtZero, recentE1rm }
   const datesByDay = {};       // day -> { 'yyyy-MM-dd': true }
+  const deloadByDate = {};     // 'yyyy-MM-dd' -> true if that training was a deload
+  const e1rmByDate = {};       // id -> { 'yyyy-MM-dd': best e1RM of that session }
   logRows.forEach(function (r) {
     const date = r[LOG.date], id = r[LOG.exerciseId], kg = r[LOG.kg], reps = r[LOG.reps];
     if (!(date instanceof Date) || !id || typeof kg !== 'number' || typeof reps !== 'number') return;
     const dateKey = Utilities.formatDate(date, tz, 'yyyy-MM-dd');
     const day = String(r[LOG.day] || '');
     if (day) (datesByDay[day] || (datesByDay[day] = {}))[dateKey] = true;
+    deloadByDate[dateKey] = deloadByDate[dateKey] === true || r[LOG.deload] === true;
     if (r[LOG.deload] === true) return;
 
+    const value = kg * (1 + reps / 30);
+    const byDate = e1rmByDate[id] || (e1rmByDate[id] = {});
+    byDate[dateKey] = Math.max(byDate[dateKey] || 0, value);
     const h = history[id] || (history[id] = { lastSession: null, bestE1rm: 0, bestRepsAtZero: 0 });
-    h.bestE1rm = Math.max(h.bestE1rm, kg * (1 + reps / 30));
+    h.bestE1rm = Math.max(h.bestE1rm, value);
     if (kg === 0) h.bestRepsAtZero = Math.max(h.bestRepsAtZero, reps);
     const set = { set: Number(r[LOG.set]), kg: kg, reps: reps, failure: r[LOG.failure] === true };
     if (!h.lastSession || dateKey > h.lastSession.date) h.lastSession = { date: dateKey, sets: [set] };
@@ -169,7 +180,14 @@ function buildState_(ss, daySheets, exercises, logRows) {
   Object.keys(history).forEach(function (id) {
     const s = history[id].lastSession;
     if (s) s.sets.sort(function (a, b) { return a.set - b.set; });
+    // recentE1rm (since 1.5.0): best e1RM of the last sessions without deload, oldest first
+    const byDate = e1rmByDate[id] || {};
+    history[id].recentE1rm = Object.keys(byDate).sort().slice(-RECENT_E1RM_SESSIONS)
+      .map(function (date) { return { date: date, e1rm: Math.round(byDate[date] * 100) / 100 }; });
   });
+  // sessions (since 1.5.0): every training date, oldest first, for the deload check in the app
+  const sessions = Object.keys(deloadByDate).sort()
+    .map(function (date) { return { date: date, deload: deloadByDate[date] }; });
 
   const days = daySheets.map(function (sheet) {
     const name = sheet.getName();
@@ -179,7 +197,10 @@ function buildState_(ss, daySheets, exercises, logRows) {
     return { name: name, lastDate: dates[0] || null, recentDates: dates.slice(0, RECENT_DATES), exerciseIds: ids.filter(Boolean) };
   });
 
-  return { apiVersion: API_VERSION, days: days, exercises: exercises, history: history };
+  return {
+    apiVersion: API_VERSION, days: days, exercises: exercises, history: history,
+    sessions: sessions, deloadWeeks: deloadWeeks || DEFAULT_DELOAD_WEEKS,
+  };
 }
 
 /**
@@ -237,7 +258,8 @@ function saveTrainingFromApp_(p) {
   const allRows = logRows.concat(rows);
   refreshAllInfo_(ss, loadContext_(ss, allRows), daySheets);   // keeps the info rows of the sheet input in sync
   // state (since 1.4.0): the app needs no second request to show the new "zuletzt" and targets
-  return { ok: true, data: { savedSets: rows.length, state: buildState_(ss, daySheets, exercises, allRows) } };
+  const state = buildState_(ss, daySheets, exercises, allRows, readDeloadWeeks_(ss));
+  return { ok: true, data: { savedSets: rows.length, state: state } };
 }
 
 /** Writes the exercise order of one day sheet (section 4.2). Payload: { day, exerciseIds: [...] } */
@@ -312,6 +334,36 @@ function ensureExerciseColumns_(ss) {
     result[key] = index + 1;
   });
   return result;
+}
+
+/** Adds the sheet "Einstellungen" with its default values if it is missing; never changes existing values. */
+function ensureSettingsSheet_(ss) {
+  if (ss.getSheetByName(SHEET.settings)) return;
+  const sheet = ss.insertSheet(SHEET.settings);
+  sheet.getRange(1, 1, 2, 3).setValues([
+    ['Einstellung', 'Wert', 'Erklärung'],
+    [SETTING_DELOAD_WEEKS, DEFAULT_DELOAD_WEEKS,
+      'Spätestens nach so vielen Wochen ohne Deload zeigt die App „Deload-Woche fällig“. ' +
+      'Sinkt die Leistung vorher bei mehreren Übungen, meldet sie sich früher (frühestens nach 4 Wochen).'],
+  ]);
+  sheet.getRange(1, 1, 1, 3).setFontWeight('bold');
+  sheet.setColumnWidth(1, 260);
+  sheet.setColumnWidth(3, 520);
+  sheet.getRange(2, 3).setWrap(true);
+}
+
+/** Deload interval in weeks from sheet "Einstellungen"; null if the sheet or a valid value is missing. */
+function readDeloadWeeks_(ss) {
+  const sheet = ss.getSheetByName(SHEET.settings);
+  if (!sheet || sheet.getLastRow() < 1) return null;
+  const rows = sheet.getRange(1, 1, sheet.getLastRow(), 2).getValues();
+  for (let i = 0; i < rows.length; i++) {
+    if (String(rows[i][0]).trim() === SETTING_DELOAD_WEEKS) {
+      const weeks = Number(rows[i][1]);
+      return weeks >= 1 && weeks <= 52 ? weeks : null;
+    }
+  }
+  return null;
 }
 
 function wasClientIdSaved_(clientId) {
