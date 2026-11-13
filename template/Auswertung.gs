@@ -139,7 +139,7 @@ function writeListFormulas_(s) {
 /** Shows "verbunden" once access is allowed; before that the cell offers "Zugriff erlauben". */
 function writeConnectionCheck_(s) {
   s.getRange(SOURCE_ROW + 1, 3).setFormula('=IF(Quelle="","",IF(IMPORTRANGE(Quelle,"Log!A1")="Datum","verbunden",' +
-    '"Adresse prüfen: kein Tracker-Sheet")))');
+    '"Adresse prüfen: kein Tracker-Sheet"))');
 }
 
 // ===== Overview, dashboard, charts ===============================================
