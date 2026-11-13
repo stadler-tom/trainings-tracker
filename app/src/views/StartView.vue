@@ -56,7 +56,10 @@ const STAGGER_MS = 80;
         Das Script in deinem Sheet ist veraltet (mindestens {{ MIN_API_VERSION }} nötig).
         <a :href="UPDATE_GUIDE_URL" target="_blank" rel="noopener">Anleitung zum Aktualisieren</a>
       </p>
-      <p class="muted" :class="{ 'slide-in': animateDays }">Welcher Trainingstag ist heute?</p>
+      <p class="muted" :class="{ 'slide-in': animateDays }">
+        Welcher Trainingstag ist heute?
+        <span v-if="loading" class="refreshing">· aktualisiere …</span>
+      </p>
       <button
         v-for="(day, index) in state.days"
         :key="day.name"
@@ -84,6 +87,7 @@ const STAGGER_MS = 80;
 
 <style scoped>
 .continue { text-align: center; font-size: 1.05rem; }
+.refreshing { font-size: 0.85rem; }
 
 .day.today { outline: 3px solid var(--today); outline-offset: -3px; }
 .day.done { outline: 3px solid var(--done); outline-offset: -3px; }

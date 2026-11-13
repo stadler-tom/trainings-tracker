@@ -8,11 +8,12 @@
  *
  * Requests: HTTPS POST, body = JSON sent as text/plain (avoids a CORS preflight):
  *   { "key": "...", "action": "getState", "payload": { ... } }
- * Responses: { "ok": true, "data": ... } or { "ok": false, "error": "<code>" }.
+ * Responses: { "ok": true, "data": ... } or { "ok": false, "error": "<code>" },
+ * each with "ms" = time spent in the script (shown in the app to check load times).
  * Error codes are English; the app shows German messages.
  */
 
-const API_VERSION = '1.3.0';
+const API_VERSION = '1.4.0';
 const APP_URL = 'https://stadler-tom.github.io/trainings-tracker/';
 const KEY_PROPERTY = 'API_KEY';
 const RECENT_DATES = 4;                 // trainings per day sent for the "today" hint
@@ -23,13 +24,14 @@ const EXTRA_EXERCISE_COLUMNS = { note: 'Gerätenotiz', barWeight: 'Stangengewich
 
 // ===== Entry points ===========================================================
 function doPost(e) {
+  const started = Date.now();
   let request;
   try {
     request = JSON.parse(e.postData.contents);
   } catch (err) {
-    return reply_({ ok: false, error: 'invalid_json' });
+    return reply_({ ok: false, error: 'invalid_json' }, started);
   }
-  return reply_(handle_(request.action, request.key, request.payload || {}));
+  return reply_(handle_(request.action, request.key, request.payload || {}), started);
 }
 
 /** GET only answers "ping", so the connection can be tested in a browser: ...?action=ping&key=... */
@@ -136,38 +138,40 @@ function ping_() {
 /** Everything the app needs for a training (section 5, getState). */
 function getState_() {
   const ss = SpreadsheetApp.getActive();
+  const days = daySheets_(ss);
+  if (dayNamesChanged_(days)) withLock_(function () { return syncDayNames_(ss, days); });   // renamed tabs: log follows first
+  return buildState_(ss, days, readExerciseRows_(ss), readLog_(ss));
+}
+
+/** State from data already read once in this request (getState and saveTraining share it). */
+function buildState_(ss, daySheets, exercises, logRows) {
   const tz = ss.getSpreadsheetTimeZone();
-  withLock_(function () { return syncDayNames_(ss); });   // renamed tabs: log follows first
-  const exercises = readExerciseRows_(ss);
   const idByName = {};
   exercises.forEach(function (ex) { idByName[ex.name] = ex.id; });
 
   const history = {};          // id -> { lastSession, bestE1rm, bestRepsAtZero }
   const datesByDay = {};       // day -> { 'yyyy-MM-dd': true }
-  const log = ss.getSheetByName(SHEET.log);
-  if (log.getLastRow() > 1) {
-    log.getRange(2, 1, log.getLastRow() - 1, LOG_HEADER.length).getValues().forEach(function (r) {
-      const date = r[LOG.date], id = r[LOG.exerciseId], kg = r[LOG.kg], reps = r[LOG.reps];
-      if (!(date instanceof Date) || !id || typeof kg !== 'number' || typeof reps !== 'number') return;
-      const dateKey = Utilities.formatDate(date, tz, 'yyyy-MM-dd');
-      const day = String(r[LOG.day] || '');
-      if (day) (datesByDay[day] || (datesByDay[day] = {}))[dateKey] = true;
-      if (r[LOG.deload] === true) return;
+  logRows.forEach(function (r) {
+    const date = r[LOG.date], id = r[LOG.exerciseId], kg = r[LOG.kg], reps = r[LOG.reps];
+    if (!(date instanceof Date) || !id || typeof kg !== 'number' || typeof reps !== 'number') return;
+    const dateKey = Utilities.formatDate(date, tz, 'yyyy-MM-dd');
+    const day = String(r[LOG.day] || '');
+    if (day) (datesByDay[day] || (datesByDay[day] = {}))[dateKey] = true;
+    if (r[LOG.deload] === true) return;
 
-      const h = history[id] || (history[id] = { lastSession: null, bestE1rm: 0, bestRepsAtZero: 0 });
-      h.bestE1rm = Math.max(h.bestE1rm, kg * (1 + reps / 30));
-      if (kg === 0) h.bestRepsAtZero = Math.max(h.bestRepsAtZero, reps);
-      const set = { set: Number(r[LOG.set]), kg: kg, reps: reps, failure: r[LOG.failure] === true };
-      if (!h.lastSession || dateKey > h.lastSession.date) h.lastSession = { date: dateKey, sets: [set] };
-      else if (dateKey === h.lastSession.date) h.lastSession.sets.push(set);
-    });
-  }
+    const h = history[id] || (history[id] = { lastSession: null, bestE1rm: 0, bestRepsAtZero: 0 });
+    h.bestE1rm = Math.max(h.bestE1rm, kg * (1 + reps / 30));
+    if (kg === 0) h.bestRepsAtZero = Math.max(h.bestRepsAtZero, reps);
+    const set = { set: Number(r[LOG.set]), kg: kg, reps: reps, failure: r[LOG.failure] === true };
+    if (!h.lastSession || dateKey > h.lastSession.date) h.lastSession = { date: dateKey, sets: [set] };
+    else if (dateKey === h.lastSession.date) h.lastSession.sets.push(set);
+  });
   Object.keys(history).forEach(function (id) {
     const s = history[id].lastSession;
     if (s) s.sets.sort(function (a, b) { return a.set - b.set; });
   });
 
-  const days = daySheets_(ss).map(function (sheet) {
+  const days = daySheets.map(function (sheet) {
     const name = sheet.getName();
     const ids = readSlots_(sheet, { idByName: idByName }).map(function (slot) { return slot.id; });
     const dates = Object.keys(datesByDay[name] || {}).sort().reverse();
@@ -188,15 +192,17 @@ function saveTrainingFromApp_(p) {
   const tz = ss.getSpreadsheetTimeZone();
   if (!p.clientId) return { ok: false, error: 'missing_client_id' };
   if (wasClientIdSaved_(p.clientId)) return { ok: true, data: { duplicate: true } };
-  syncDayNames_(ss);
+  const daySheets = daySheets_(ss);
+  syncDayNames_(ss, daySheets);
   const daySheet = findDaySheet_(ss, p.day);            // also finds a day renamed since the app loaded
   if (!daySheet) return { ok: false, error: 'unknown_day' };
   const day = daySheet.getName();
   const date = parseIsoDate_(p.date);
   if (!date) return { ok: false, error: 'invalid_date' };
 
+  const exercises = readExerciseRows_(ss);
   const byId = {};
-  readExerciseRows_(ss).forEach(function (ex) { byId[ex.id] = ex; });
+  exercises.forEach(function (ex) { byId[ex.id] = ex; });
   const now = new Date();
   const rows = [];
   for (let i = 0; i < (p.exercises || []).length; i++) {
@@ -217,21 +223,21 @@ function saveTrainingFromApp_(p) {
   }
   if (!rows.length) return { ok: false, error: 'nothing_to_save' };
 
-  const log = ss.getSheetByName(SHEET.log);
-  const lastRow = log.getLastRow();
+  // the log is read once and reused for the duplicate check, the info rows and the new state
+  const logRows = readLog_(ss);
   const dateText = Utilities.formatDate(date, tz, 'yyyy-MM-dd');
-  if (lastRow > 1) {
-    const exists = log.getRange(2, 1, lastRow - 1, 2).getValues().some(function (r) {
-      return r[0] instanceof Date && r[1] === day && Utilities.formatDate(r[0], tz, 'yyyy-MM-dd') === dateText;
-    });
-    if (exists) return { ok: false, error: 'already_saved' };
-  }
+  const exists = logRows.some(function (r) {
+    return r[LOG.date] instanceof Date && r[LOG.day] === day && Utilities.formatDate(r[LOG.date], tz, 'yyyy-MM-dd') === dateText;
+  });
+  if (exists) return { ok: false, error: 'already_saved' };
 
-  log.getRange(lastRow + 1, 1, rows.length, LOG_HEADER.length).setValues(rows);
-  SpreadsheetApp.flush();
+  const log = ss.getSheetByName(SHEET.log);
+  log.getRange(logRows.length + 2, 1, rows.length, LOG_HEADER.length).setValues(rows);
   rememberClientId_(p.clientId);
-  refreshAllInfo_(ss);                         // keeps the info rows of the sheet input in sync
-  return { ok: true, data: { savedSets: rows.length } };
+  const allRows = logRows.concat(rows);
+  refreshAllInfo_(ss, loadContext_(ss, allRows), daySheets);   // keeps the info rows of the sheet input in sync
+  // state (since 1.4.0): the app needs no second request to show the new "zuletzt" and targets
+  return { ok: true, data: { savedSets: rows.length, state: buildState_(ss, daySheets, exercises, allRows) } };
 }
 
 /** Writes the exercise order of one day sheet (section 4.2). Payload: { day, exerciseIds: [...] } */
@@ -340,6 +346,7 @@ function withLock_(fn) {
   }
 }
 
-function reply_(body) {
+function reply_(body, started) {
+  if (started) body.ms = Date.now() - started;
   return ContentService.createTextOutput(JSON.stringify(body)).setMimeType(ContentService.MimeType.JSON);
 }

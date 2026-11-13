@@ -82,9 +82,35 @@ export function errorMessage(error: unknown): string {
   return MESSAGES.network;
 }
 
+/** Duration of the last request per action: total in the app and the part spent in the script. */
+export interface Timing {
+  totalMs: number;
+  scriptMs: number | null;       // null with web APIs before 1.4.0
+  at: string;                    // ISO time of the request
+}
+
+const TIMINGS_KEY = 'tt.timings';
+
+export function loadTimings(): Record<string, Timing> {
+  try {
+    return JSON.parse(localStorage.getItem(TIMINGS_KEY) ?? '{}');
+  } catch {
+    return {};
+  }
+}
+
+function rememberTiming(action: string, timing: Timing) {
+  try {
+    localStorage.setItem(TIMINGS_KEY, JSON.stringify({ ...loadTimings(), [action]: timing }));
+  } catch {
+    // ignore
+  }
+}
+
 async function call<T>(settings: Settings, action: string, payload: object = {}): Promise<T> {
   if (!settings.apiUrl || !settings.apiKey) throw new ApiError('not_configured');
   if (settings.apiUrl.endsWith('/dev')) throw new ApiError('dev_url');
+  const started = performance.now();
   let response: Response;
   try {
     response = await fetch(settings.apiUrl, {
@@ -95,12 +121,15 @@ async function call<T>(settings: Settings, action: string, payload: object = {})
   } catch {
     throw new ApiError('network');
   }
-  let body: { ok: boolean; data?: T; error?: string; detail?: string };
+  let body: { ok: boolean; data?: T; error?: string; detail?: string; ms?: number };
   try {
     body = await response.json();
   } catch {
     throw new ApiError('invalid_response');
   }
+  rememberTiming(action, {
+    totalMs: Math.round(performance.now() - started), scriptMs: body.ms ?? null, at: new Date().toISOString(),
+  });
   if (!body.ok) throw new ApiError(body.error ?? 'unknown', body.detail);
   return body.data as T;
 }
@@ -130,7 +159,7 @@ export interface SavePayload {
 }
 
 export const saveTraining = (settings: Settings, payload: SavePayload) =>
-  call<{ savedSets?: number; duplicate?: boolean }>(settings, 'saveTraining', payload);
+  call<{ savedSets?: number; duplicate?: boolean; state?: State }>(settings, 'saveTraining', payload);   // state since 1.4.0
 
 export const updateDaySlots = (settings: Settings, day: string, exerciseIds: string[]) =>
   call<{ exerciseIds: string[] }>(settings, 'updateDaySlots', { day, exerciseIds });

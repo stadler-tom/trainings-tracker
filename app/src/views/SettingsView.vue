@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { errorMessage, isOlderVersion, MIN_API_VERSION, ping, UPDATE_GUIDE_URL } from '../api';
+import { errorMessage, isOlderVersion, loadTimings, MIN_API_VERSION, ping, UPDATE_GUIDE_URL } from '../api';
+import { formatNumber } from '../training';
 import { DEFAULT_PLATES, parseSetupLink, type Settings } from '../storage';
 
 const props = defineProps<{ settings: Settings; apiVersion: string | null }>();
@@ -15,6 +16,16 @@ const testFailed = ref(false);
 const testing = ref(false);
 
 const appVersion = __APP_VERSION__;
+// duration of the last load and save, to check the load times on the phone
+const TIMING_LABELS: Record<string, string> = { getState: 'Letztes Laden', saveTraining: 'Letztes Speichern' };
+const timingLines = Object.entries(TIMING_LABELS).flatMap(([action, label]) => {
+  const timing = loadTimings()[action];
+  if (!timing) return [];
+  const seconds = (ms: number) => formatNumber(Math.round(ms / 100) / 10);
+  const script = timing.scriptMs !== null ? `, davon Script ${seconds(timing.scriptMs)} s` : '';
+  return [`${label}: ${seconds(timing.totalMs)} s${script}`];
+});
+
 const apiOutdated = computed(() => props.apiVersion !== null && isOlderVersion(props.apiVersion, MIN_API_VERSION));
 
 function applyLink() {
@@ -93,6 +104,9 @@ async function testConnection() {
 
     <p class="muted small">
       App {{ appVersion }} · Web-API {{ apiVersion ?? 'unbekannt' }}
+    </p>
+    <p v-if="timingLines.length" class="muted small">
+      <template v-for="line in timingLines" :key="line">{{ line }}<br /></template>
     </p>
     <p v-if="apiOutdated" class="message error">
       Das Script in deinem Sheet ist älter als diese App braucht (mindestens {{ MIN_API_VERSION }}).

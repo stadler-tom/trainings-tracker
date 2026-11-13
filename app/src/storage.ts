@@ -40,3 +40,24 @@ export function parseSetupLink(text: string): { apiUrl: string; apiKey: string }
   if (!apiUrl.startsWith('https://') || !apiKey) return null;
   return { apiUrl, apiKey };
 }
+
+// Last loaded state, shown at once on the next start while the fresh state loads in the
+// background. It is a copy of the sheet for display only and belongs to one web API URL.
+const STATE_KEY = 'tt.state';
+
+export function loadCachedState<T>(apiUrl: string): T | null {
+  try {
+    const cached = JSON.parse(localStorage.getItem(STATE_KEY) ?? 'null');
+    return cached && cached.apiUrl === apiUrl ? cached.state : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveCachedState(apiUrl: string, state: unknown): void {
+  try {
+    localStorage.setItem(STATE_KEY, JSON.stringify({ apiUrl, state }));
+  } catch {
+    // ignore: then the next start simply waits for the web API
+  }
+}

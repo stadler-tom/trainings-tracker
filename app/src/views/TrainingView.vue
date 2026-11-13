@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // Training input (requirements spec sections 4.2–4.8).
-import { computed, ref } from 'vue';
+import { computed, nextTick, ref } from 'vue';
 import { errorMessage, saveTraining, updateDaySlots, updateExerciseNote, type Exercise, type State } from '../api';
 import { buildPayload, MAX_EXERCISES, newDraft, newItem, parseKg, type Draft } from '../draft';
 import type { Settings } from '../storage';
@@ -15,6 +15,7 @@ const props = defineProps<{
   settings: Settings;
   loadError: string;
   reload: () => Promise<void>;
+  applyState: (state: State) => void;
 }>();
 const emit = defineEmits<{ back: []; discard: []; saved: [draft: Draft] }>();
 
@@ -158,18 +159,27 @@ async function save() {
   invalid.value = null;
   saving.value = true;
   saveMessage.value = '';
+  let saved: Awaited<ReturnType<typeof saveTraining>>;
   try {
-    await saveTraining(props.settings, result.payload);
+    saved = await saveTraining(props.settings, result.payload);
   } catch (error) {
     showSaveMessage(errorMessage(error), true);
     saving.value = false;
     return;
   }
-  // saved: reload so "zuletzt" and "Ziel heute" include this training, then clear the inputs
-  await props.reload();
+  // "zuletzt" and "Ziel heute" must include this training: the web API (1.4.0+) sends the
+  // new state with the answer; older versions need a second request
+  let fresh: State | null = props.state;
+  if (saved.state) {
+    props.applyState(saved.state);
+    fresh = saved.state;
+  } else {
+    await props.reload();
+    await nextTick();                            // props.state follows the parent after its update
+    fresh = props.state;
+  }
   saving.value = false;
-  const fresh = props.state ? newDraft(props.state, props.draft.day, props.draft.date) : null;
-  if (fresh) emit('saved', fresh);
+  if (fresh) emit('saved', newDraft(fresh, props.draft.day, props.draft.date));
   showSaveMessage(`Training gespeichert: ${result.sets} ${result.sets === 1 ? 'Satz' : 'Sätze'}.`, false);
 }
 

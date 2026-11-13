@@ -58,7 +58,7 @@ Alle anderen Zeilen leer lassen.
 
 1. Funktion **showSetupLink** ausführen, im Sheet-Tab die URL aus A5 einfügen, **OK**.
 2. Den angezeigten Einrichtungslink kopieren und aufs iPhone schicken (Mail an dich, Notizen).
-3. In der App: **Einstellungen → Einrichtungslink** einfügen → **Link übernehmen** → Meldung „Verbunden mit …“ und Web-API 1.3.0 → **Speichern**.
+3. In der App: **Einstellungen → Einrichtungslink** einfügen → **Link übernehmen** → Meldung „Verbunden mit …“ und Web-API 1.4.0 → **Speichern**.
 
 Die App arbeitet jetzt mit deinem echten Sheet. Die Testkopie brauchst du nicht mehr.
 

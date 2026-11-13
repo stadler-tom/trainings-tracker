@@ -5,13 +5,14 @@ import TrainingView from './views/TrainingView.vue';
 import SettingsView from './views/SettingsView.vue';
 import { errorMessage, getState, type State } from './api';
 import { loadDraft, newDraft, removeDraft, saveDraft, type Draft } from './draft';
-import { loadSettings, parseSetupLink, saveSettings, type Settings } from './storage';
+import { loadCachedState, loadSettings, parseSetupLink, saveCachedState, saveSettings, type Settings } from './storage';
 
 // Three screens are enough for a simple switch; no router needed.
 type Screen = 'start' | 'training' | 'settings';
 const screen = ref<Screen>('start');
 const settings = ref<Settings>(loadSettings());
-const state = ref<State | null>(null);
+// the last known state is shown at once; reload() replaces it with the fresh one
+const state = ref<State | null>(loadCachedState<State>(settings.value.apiUrl));
 const draft = ref<Draft | null>(loadDraft());
 const loading = ref(false);
 const loadError = ref('');
@@ -30,15 +31,21 @@ async function reload() {
   loading.value = true;
   loadError.value = '';
   try {
-    state.value = await getState(settings.value);
-    // a training opened before the data arrived gets its exercises now
-    if (draft.value && !draft.value.touched && draft.value.items.length === 0) {
-      draft.value = newDraft(state.value, draft.value.day, draft.value.date);
-    }
+    applyState(await getState(settings.value));
   } catch (error) {
     loadError.value = errorMessage(error);
   } finally {
     loading.value = false;
+  }
+}
+
+/** New state from the web API (after loading or saving); also kept for the next start. */
+function applyState(fresh: State) {
+  state.value = fresh;
+  saveCachedState(settings.value.apiUrl, fresh);
+  // a training opened before the data arrived gets its exercises now
+  if (draft.value && !draft.value.touched && draft.value.items.length === 0) {
+    draft.value = newDraft(fresh, draft.value.day, draft.value.date);
   }
 }
 
@@ -67,6 +74,7 @@ function discardTraining() {
 }
 
 function applySettings(updated: Settings) {
+  if (updated.apiUrl !== settings.value.apiUrl) state.value = null;   // other sheet: do not show the old data
   settings.value = updated;
   saveSettings(updated);
   screen.value = 'start';
@@ -106,6 +114,7 @@ onMounted(() => {
     :settings="settings"
     :load-error="loadError"
     :reload="reload"
+    :apply-state="applyState"
     @back="screen = 'start'"
     @discard="discardTraining"
     @saved="draft = $event"

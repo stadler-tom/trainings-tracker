@@ -46,7 +46,10 @@ function nameRow_(slot) { return FIRST_ROW + slot * ROWS_PER_SLOT; }
 // ===== Training days: the tab name is the only place a day is named ===========
 /** Day sheets in tab order: every sheet with the input header in row 4. */
 function daySheets_(ss) {
-  return ss.getSheets().filter(isDaySheet_);
+  const systemSheets = Object.keys(SHEET).map(function (key) { return SHEET[key]; });
+  return ss.getSheets().filter(function (sheet) {
+    return systemSheets.indexOf(sheet.getName()) < 0 && isDaySheet_(sheet);   // skip the known non-day sheets cheaply
+  });
 }
 
 function isDaySheet_(sheet) {
@@ -71,12 +74,12 @@ function findDaySheet_(ss, name) {
  * replaced (all renames in one pass, so swapping two names works). Returns changed log rows.
  * Call while holding the document lock.
  */
-function syncDayNames_(ss) {
+function syncDayNames_(ss, days) {
   const known = readJsonProperty_(DAY_NAMES_PROPERTY);
   const aliases = readJsonProperty_(DAY_ALIASES_PROPERTY);
   const current = {};
   const renamed = {};                          // old name -> new name
-  daySheets_(ss).forEach(function (sheet) {
+  (days || daySheets_(ss)).forEach(function (sheet) {
     const id = String(sheet.getSheetId());
     const name = sheet.getName();
     current[id] = name;
@@ -106,6 +109,13 @@ function syncDayNames_(ss) {
   writeJsonProperty_(DAY_NAMES_PROPERTY, current);
   writeJsonProperty_(DAY_ALIASES_PROPERTY, aliases);
   return changedRows;
+}
+
+/** true if a day sheet was added, renamed or removed since the last syncDayNames_ (cheap, no lock). */
+function dayNamesChanged_(days) {
+  const current = {};
+  days.forEach(function (sheet) { current[String(sheet.getSheetId())] = sheet.getName(); });
+  return PropertiesService.getScriptProperties().getProperty(DAY_NAMES_PROPERTY) !== JSON.stringify(current);
 }
 
 function readJsonProperty_(name) {
@@ -384,31 +394,36 @@ function loadExercises_(ss) {
 }
 
 /** Reads exercises and log once; keeps the latest non-deload session per exercise ID. */
-function loadContext_(ss) {
+/** All log rows below the header (one read; callers pass them on instead of reading again). */
+function readLog_(ss) {
+  const log = ss.getSheetByName(SHEET.log);
+  return log.getLastRow() > 1 ? log.getRange(2, 1, log.getLastRow() - 1, LOG_HEADER.length).getValues() : [];
+}
+
+/** Exercises and last regular session per exercise; logRows optional (read if missing). */
+function loadContext_(ss, logRows) {
   const tz = ss.getSpreadsheetTimeZone();
   const lastSession = {};
-  const log = ss.getSheetByName(SHEET.log);
-  if (log.getLastRow() > 1) {
-    log.getRange(2, 1, log.getLastRow() - 1, LOG_HEADER.length).getValues().forEach(function (r) {
-      const date = r[LOG.date], id = r[LOG.exerciseId], kg = r[LOG.kg], reps = r[LOG.reps];
-      if (!(date instanceof Date) || !id || r[LOG.deload] === true) return;
-      if (typeof kg !== 'number' || typeof reps !== 'number') return;
-      const key = Utilities.formatDate(date, tz, 'yyyy-MM-dd');
-      const set = { no: r[LOG.set], kg: kg, reps: reps };
-      const s = lastSession[id];
-      if (!s || key > s.key) lastSession[id] = { key: key, date: date, sets: [set] };
-      else if (key === s.key) s.sets.push(set);
-    });
-  }
+  (logRows || readLog_(ss)).forEach(function (r) {
+    const date = r[LOG.date], id = r[LOG.exerciseId], kg = r[LOG.kg], reps = r[LOG.reps];
+    if (!(date instanceof Date) || !id || r[LOG.deload] === true) return;
+    if (typeof kg !== 'number' || typeof reps !== 'number') return;
+    const key = Utilities.formatDate(date, tz, 'yyyy-MM-dd');
+    const set = { no: r[LOG.set], kg: kg, reps: reps };
+    const s = lastSession[id];
+    if (!s || key > s.key) lastSession[id] = { key: key, date: date, sets: [set] };
+    else if (key === s.key) s.sets.push(set);
+  });
   const exercises = loadExercises_(ss);
   const idByName = {};
   Object.keys(exercises).forEach(function (id) { idByName[exercises[id].name] = id; });
   return { exercises: exercises, idByName: idByName, lastSession: lastSession, tz: tz };
 }
 
-function refreshAllInfo_(ss) {
-  const ctx = loadContext_(ss);
-  daySheets_(ss).forEach(function (sheet) { refreshInfo_(sheet, ctx); });
+/** ctx and days are optional; the web API passes what it has already read. */
+function refreshAllInfo_(ss, ctx, days) {
+  ctx = ctx || loadContext_(ss);
+  (days || daySheets_(ss)).forEach(function (sheet) { refreshInfo_(sheet, ctx); });
 }
 
 /**
