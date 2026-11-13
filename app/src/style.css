@@ -21,7 +21,10 @@
   }
 }
 
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+  touch-action: manipulation;   /* no double-tap zoom (fast +/- taps); pinch zoom stays available */
+}
 body { margin: 0; }
 
 .screen {
