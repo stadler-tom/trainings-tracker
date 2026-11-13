@@ -13,7 +13,9 @@
  *   → "Daten Einheiten" (one row per exercise and training day, like the Power Query "Sessions")
  *   → "Daten Liste" (exercises with sessions, ordered by training day)
  *   → classic formulas on "_calc", "Dashboard", "Übersicht", "Volumen", "Körper" (from the .xlsx).
- * Formulas are written with setFormula, i.e. English function names and commas in every locale.
+ * setFormula parses formulas in the spreadsheet's locale (in German: ";" as separator). The builder
+ * therefore switches the file to en_US while writing and back afterwards; stored formulas are
+ * locale-independent, so they are shown with ";" again once the German locale is back.
  */
 
 const SHEETS = {
@@ -34,11 +36,19 @@ function setupAnalysis() {
     if (!s) throw new Error('Sheet "' + name + '" is missing: is this the converted Trainings-Auswertung-Google.xlsx?');
     return s;
   };
-  writeImportFormulas_(sheet);
-  writeSessionFormulas_(sheet(SHEETS.sessions));
-  writeListFormulas_(sheet(SHEETS.list));
-  writeConnectionCheck_(sheet(SHEETS.settings));
-  writeSparklines_(sheet(SHEETS.overview));
+  const locale = ss.getSpreadsheetLocale();
+  ss.setSpreadsheetLocale('en_US');            // formulas below use "," as separator
+  SpreadsheetApp.flush();
+  try {
+    writeImportFormulas_(sheet);
+    writeSessionFormulas_(sheet(SHEETS.sessions));
+    writeListFormulas_(sheet(SHEETS.list));
+    writeConnectionCheck_(sheet(SHEETS.settings));
+    writeSparklines_(sheet(SHEETS.overview));
+    SpreadsheetApp.flush();
+  } finally {
+    ss.setSpreadsheetLocale(locale);           // back to German number and date display
+  }
   writeExerciseDropdown_(sheet(SHEETS.dashboard), sheet(SHEETS.list));
   writeCharts_(sheet);
   SpreadsheetApp.getUi().alert('Auswertung', 'Fertig. Jetzt im Blatt Einstellungen die Adresse deines Tracker-Sheets ' +
