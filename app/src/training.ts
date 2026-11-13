@@ -182,3 +182,8 @@ export function usualWeekday(day: Day): number | null {
 export function daysForToday(days: Day[], today = new Date()): string[] {
   return days.filter((day) => usualWeekday(day) === today.getDay()).map((day) => day.name);
 }
+
+/** Names of the days with a training saved for the given date (the newest log entry is today). */
+export function daysDoneToday(days: Day[], todayIso: string): string[] {
+  return days.filter((day) => day.lastDate === todayIso).map((day) => day.name);
+}

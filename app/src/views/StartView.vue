@@ -2,7 +2,8 @@
 import { computed } from 'vue';
 import { isOlderVersion, MIN_API_VERSION, UPDATE_GUIDE_URL, type State } from '../api';
 import { formatIsoDate } from '../format';
-import { daysForToday } from '../training';
+import { todayIso } from '../draft';
+import { daysDoneToday, daysForToday } from '../training';
 import LoadingSpinner from './LoadingSpinner.vue';
 
 const props = defineProps<{
@@ -16,6 +17,8 @@ const emit = defineEmits<{ openDay: [day: string]; openSettings: []; reload: [] 
 
 // hint only: the day usually trained on today's weekday gets a frame (derived from the log)
 const todayDays = computed(() => (props.state ? daysForToday(props.state.days) : []));
+// a day with a training saved today is shown as done (instead of the "today" hint)
+const doneDays = computed(() => (props.state ? daysDoneToday(props.state.days, todayIso()) : []));
 
 const apiOutdated = computed(() => props.state != null && isOlderVersion(props.state.apiVersion, MIN_API_VERSION));
 
@@ -58,15 +61,21 @@ const STAGGER_MS = 80;
         v-for="(day, index) in state.days"
         :key="day.name"
         class="big day"
-        :class="{ 'slide-in': animateDays, today: todayDays.includes(day.name) }"
+        :class="{
+          'slide-in': animateDays,
+          done: doneDays.includes(day.name),
+          today: todayDays.includes(day.name) && !doneDays.includes(day.name),
+        }"
         :style="animateDays ? { animationDelay: `${(index + 1) * STAGGER_MS}ms` } : undefined"
         @click="emit('openDay', day.name)"
       >
         <span class="name">
           {{ day.name }}
-          <span v-if="todayDays.includes(day.name)" class="today-label">Heute</span>
+          <span v-if="doneDays.includes(day.name)" class="badge done-label">✓ Erledigt</span>
+          <span v-else-if="todayDays.includes(day.name)" class="badge today-label">Heute</span>
         </span>
-        <small class="muted">{{ day.lastDate ? 'zuletzt ' + formatIsoDate(day.lastDate) : 'noch nie' }}</small>
+        <small class="muted">{{ doneDays.includes(day.name) ? 'heute gespeichert'
+          : day.lastDate ? 'zuletzt ' + formatIsoDate(day.lastDate) : 'noch nie' }}</small>
       </button>
       <p v-if="error" class="message error">{{ error }}</p>
     </template>
@@ -77,17 +86,19 @@ const STAGGER_MS = 80;
 .continue { text-align: center; font-size: 1.05rem; }
 
 .day.today { outline: 3px solid var(--today); outline-offset: -3px; }
+.day.done { outline: 3px solid var(--done); outline-offset: -3px; }
 .name { display: flex; align-items: center; gap: 10px; }
-.today-label {
+.badge {
   padding: 2px 8px;
   border-radius: 999px;
   font-size: 0.8rem;
   font-weight: 600;
   color: #fff;
-  background: var(--today);
 }
+.today-label { background: var(--today); }
+.done-label { background: var(--done); }
 @media (prefers-color-scheme: dark) {
-  .today-label { color: #0b1220; }
+  .badge { color: #0b1220; }
 }
 
 .slide-in {

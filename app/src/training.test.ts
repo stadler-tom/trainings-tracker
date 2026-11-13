@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Exercise, ExerciseHistory, LoggedSet } from './api';
 import {
-  checkRecord, daysForToday, usualWeekday, e1rm, formatNumber, lastText, platesPerSide, stepValue, targetToday, warmUpSets,
+  checkRecord, daysDoneToday, daysForToday, usualWeekday, e1rm, formatNumber, lastText, platesPerSide, stepValue, targetToday, warmUpSets,
 } from './training';
 
 const DEFAULT_PLATES = [25, 20, 15, 10, 5, 2.5, 1.25];
@@ -223,5 +223,17 @@ describe('usualWeekday / daysForToday', () => {
     expect(daysForToday(days, new Date(2026, 10, 18))).toEqual(['Push']);      // Wednesday
     expect(daysForToday(days, new Date(2026, 10, 15))).toEqual(['Upper']);     // Sunday
     expect(daysForToday(days, new Date(2026, 10, 17))).toEqual([]);            // Tuesday: rest day
+  });
+});
+
+describe('daysDoneToday', () => {
+  it('a day is done when its newest training is today', () => {
+    const days = [
+      { name: 'Pull', lastDate: '2026-11-13', exerciseIds: [] },
+      { name: 'Push', lastDate: '2026-11-11', exerciseIds: [] },
+      { name: 'Neu', lastDate: null, exerciseIds: [] },
+    ];
+    expect(daysDoneToday(days, '2026-11-13')).toEqual(['Pull']);
+    expect(daysDoneToday(days, '2026-11-14')).toEqual([]);
   });
 });
