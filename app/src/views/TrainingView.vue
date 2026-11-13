@@ -4,9 +4,11 @@ import { computed, nextTick, ref } from 'vue';
 import { errorMessage, saveTraining, updateDaySlots, updateExerciseNote, type Exercise, type State } from '../api';
 import { buildPayload, MAX_EXERCISES, newDraft, newItem, parseKg, type Draft } from '../draft';
 import type { Settings } from '../storage';
+import { buildSummary, type Summary } from '../summary';
 import { targetToday } from '../training';
 import ExerciseCard from './ExerciseCard.vue';
 import LoadingSpinner from './LoadingSpinner.vue';
+import SummaryOverlay from './SummaryOverlay.vue';
 import ToolsOverlay from './ToolsOverlay.vue';
 
 const props = defineProps<{
@@ -25,6 +27,7 @@ const saving = ref(false);
 // messages of the save button are shown right above it (where the user looks when saving)
 const saveMessage = ref('');
 const saveIsError = ref(false);
+const summary = ref<Summary | null>(null);     // shown after a successful save
 const invalid = ref<{ itemIndex: number; field: 'kg' | number } | null>(null);
 const toolsFor = ref<number | null>(null);
 
@@ -159,6 +162,7 @@ async function save() {
   invalid.value = null;
   saving.value = true;
   saveMessage.value = '';
+  const finished = buildSummary(result.payload, props.state);   // records against the trainings before this one
   let saved: Awaited<ReturnType<typeof saveTraining>>;
   try {
     saved = await saveTraining(props.settings, result.payload);
@@ -181,6 +185,7 @@ async function save() {
   saving.value = false;
   if (fresh) emit('saved', newDraft(fresh, props.draft.day, props.draft.date));
   showSaveMessage(`Training gespeichert: ${result.sets} ${result.sets === 1 ? 'Satz' : 'Sätze'}.`, false);
+  summary.value = finished;
 }
 
 function discard() {
@@ -253,6 +258,8 @@ function discard() {
       {{ saving ? 'Speichere …' : 'Training speichern' }}
     </button>
     <button class="ghost" @click="discard">Training verwerfen</button>
+
+    <SummaryOverlay v-if="summary" :summary="summary" @close="summary = null; emit('back')" />
 
     <ToolsOverlay
       v-if="toolsExercise"
