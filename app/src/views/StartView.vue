@@ -14,7 +14,7 @@ const props = defineProps<{
   error: string;
   runningDay: string | null;
 }>();
-const emit = defineEmits<{ openDay: [day: string]; openSettings: []; reload: [] }>();
+const emit = defineEmits<{ openDay: [day: string]; openSettings: []; openHistory: []; openBody: []; reload: [] }>();
 
 // hint only: the day usually trained on today's weekday gets a frame (derived from the log)
 const todayDays = computed(() => (props.state ? daysForToday(props.state.days) : []));
@@ -97,6 +97,11 @@ const STAGGER_MS = 80;
         <small class="muted">{{ doneDays.includes(day.name) ? 'heute gespeichert'
           : day.lastDate ? 'zuletzt ' + formatIsoDate(day.lastDate) : 'noch nie' }}</small>
       </button>
+      <div class="more" :class="{ 'slide-in': animateDays }"
+        :style="animateDays ? { animationDelay: `${(state.days.length + 1) * STAGGER_MS}ms` } : undefined">
+        <button class="big" @click="emit('openHistory')">📋 Verlauf</button>
+        <button class="big" @click="emit('openBody')">⚖️ Körper</button>
+      </div>
       <p v-if="error" class="message error">{{ error }}</p>
     </template>
   </main>
@@ -118,6 +123,8 @@ const STAGGER_MS = 80;
 .deload summary { cursor: pointer; color: var(--accent); font-weight: 600; }
 .deload details p { margin: 6px 0 0; }
 .refreshing { font-size: 0.85rem; }
+.more { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
+.more button { text-align: center; }
 
 .day.today { outline: 3px solid var(--today); outline-offset: -3px; }
 .day.done { outline: 3px solid var(--done); outline-offset: -3px; }

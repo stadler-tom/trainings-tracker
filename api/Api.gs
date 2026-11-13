@@ -13,7 +13,7 @@
  * Error codes are English; the app shows German messages.
  */
 
-const API_VERSION = '1.5.0';
+const API_VERSION = '1.6.0';
 const APP_URL = 'https://stadler-tom.github.io/trainings-tracker/';
 const KEY_PROPERTY = 'API_KEY';
 const RECENT_DATES = 4;                 // trainings per day sent for the "today" hint
@@ -21,10 +21,19 @@ const CLIENT_IDS_PROPERTY = 'SAVED_CLIENT_IDS';
 const WEB_APP_URL_PROPERTY = 'WEB_APP_URL';
 const CLIENT_IDS_KEPT = 200;
 const EXTRA_EXERCISE_COLUMNS = { note: 'Gerätenotiz', barWeight: 'Stangengewicht kg' };
-const RECENT_E1RM_SESSIONS = 3;         // sessions per exercise sent for the deload check
+const RECENT_E1RM_SESSIONS = 8;         // sessions per exercise: deload check and progress curve in the app
 // sheet "Einstellungen": one setting per row, label in column A, value in column B
-const SETTING_DELOAD_WEEKS = 'Deload spätestens nach (Wochen)';
-const DEFAULT_DELOAD_WEEKS = 8;
+const SETTINGS = [
+  { key: 'deloadWeeks', label: 'Deload spätestens nach (Wochen)', value: 8, min: 1, max: 52,
+    help: 'Spätestens nach so vielen Wochen ohne Deload zeigt die App „Deload-Woche fällig“. ' +
+      'Sinkt die Leistung vorher bei mehreren Übungen, meldet sie sich früher (frühestens nach 4 Wochen).' },
+  { key: 'weightTarget', label: 'Ziel Körpergewicht pro Woche (kg)', value: -0.5, min: -2, max: 2,
+    help: 'Negativ = abnehmen, positiv = zunehmen, 0 = halten. Die App vergleicht den Wochenschnitt ' +
+      'mit dem von vor 2 Wochen und meldet, ob du im Plan liegst.' },
+];
+// sheet "Körper": A date, B weight kg, C waist cm (layout shared with the analysis files)
+const BODY = { date: 0, weight: 1, waist: 2 };
+const BODY_LIMITS = { weight: [30, 250], waist: [40, 250] };
 
 // ===== Entry points ===========================================================
 function doPost(e) {
@@ -54,6 +63,9 @@ function handle_(action, key, payload) {
       case 'saveTraining': return withLock_(function () { return saveTrainingFromApp_(payload); });
       case 'updateDaySlots': return withLock_(function () { return updateDaySlots_(payload); });
       case 'updateExerciseNote': return withLock_(function () { return updateExerciseNote_(payload); });
+      case 'getTraining': return getTraining_(payload);
+      case 'deleteTraining': return withLock_(function () { return deleteTraining_(payload); });
+      case 'saveBody': return withLock_(function () { return saveBody_(payload); });
       default: return { ok: false, error: 'unknown_action' };
     }
   } catch (err) {
@@ -75,7 +87,7 @@ function setupApi() {
     properties.setProperty(KEY_PROPERTY, Utilities.getUuid().replace(/-/g, ''));
   }
   ensureExerciseColumns_(ss);
-  ensureSettingsSheet_(ss);
+  ensureSettings_(ss);
   refreshExerciseList_(ss);
   const ctx = loadContext_(ss);
   const days = daySheets_(ss);
@@ -145,29 +157,46 @@ function getState_() {
   const ss = SpreadsheetApp.getActive();
   const days = daySheets_(ss);
   if (dayNamesChanged_(days)) withLock_(function () { return syncDayNames_(ss, days); });   // renamed tabs: log follows first
-  return buildState_(ss, days, readExerciseRows_(ss), readLog_(ss), readDeloadWeeks_(ss));
+  return buildState_(ss, days, readExerciseRows_(ss), readLog_(ss), readExtras_(ss));
 }
 
-/** State from data already read once in this request (getState and saveTraining share it). */
-function buildState_(ss, daySheets, exercises, logRows, deloadWeeks) {
+/** Data outside the log that the state needs: settings and body values. */
+function readExtras_(ss) {
+  return { settings: readSettings_(ss), body: readBody_(ss) };
+}
+
+/** State from data already read once in this request (getState and the writing actions share it). */
+function buildState_(ss, daySheets, exercises, logRows, extras) {
   const tz = ss.getSpreadsheetTimeZone();
   const idByName = {};
-  exercises.forEach(function (ex) { idByName[ex.name] = ex.id; });
+  const weightTypeById = {};
+  exercises.forEach(function (ex) { idByName[ex.name] = ex.id; weightTypeById[ex.id] = ex.weightType; });
+  const bodyWeightAt = bodyWeightLookup_(extras.body);
 
   const history = {};          // id -> { lastSession, bestE1rm, bestRepsAtZero, recentE1rm }
   const datesByDay = {};       // day -> { 'yyyy-MM-dd': true }
   const deloadByDate = {};     // 'yyyy-MM-dd' -> true if that training was a deload
   const e1rmByDate = {};       // id -> { 'yyyy-MM-dd': best e1RM of that session }
+  const trainings = {};        // 'yyyy-MM-dd|day' -> overview of one training
   logRows.forEach(function (r) {
     const date = r[LOG.date], id = r[LOG.exerciseId], kg = r[LOG.kg], reps = r[LOG.reps];
     if (!(date instanceof Date) || !id || typeof kg !== 'number' || typeof reps !== 'number') return;
     const dateKey = Utilities.formatDate(date, tz, 'yyyy-MM-dd');
     const day = String(r[LOG.day] || '');
-    if (day) (datesByDay[day] || (datesByDay[day] = {}))[dateKey] = true;
-    deloadByDate[dateKey] = deloadByDate[dateKey] === true || r[LOG.deload] === true;
-    if (r[LOG.deload] === true) return;
+    const deload = r[LOG.deload] === true;
+    if (day) {
+      (datesByDay[day] || (datesByDay[day] = {}))[dateKey] = true;
+      const key = dateKey + '|' + day;
+      const t = trainings[key] || (trainings[key] = { date: dateKey, day: day, deload: false, sets: 0, volume: 0, ids: {} });
+      t.deload = t.deload || deload;
+      t.sets++;
+      t.volume += kg * reps;
+      t.ids[id] = true;
+    }
+    deloadByDate[dateKey] = deloadByDate[dateKey] === true || deload;
+    if (deload) return;
 
-    const value = kg * (1 + reps / 30);
+    const value = e1rmOf_(kg, reps, weightTypeById[id] === VALUE.addedWeight ? bodyWeightAt(dateKey) : null);
     const byDate = e1rmByDate[id] || (e1rmByDate[id] = {});
     byDate[dateKey] = Math.max(byDate[dateKey] || 0, value);
     const h = history[id] || (history[id] = { lastSession: null, bestE1rm: 0, bestRepsAtZero: 0 });
@@ -188,6 +217,12 @@ function buildState_(ss, daySheets, exercises, logRows, deloadWeeks) {
   // sessions (since 1.5.0): every training date, oldest first, for the deload check in the app
   const sessions = Object.keys(deloadByDate).sort()
     .map(function (date) { return { date: date, deload: deloadByDate[date] }; });
+  // trainings (since 1.6.0): overview of every training, newest first, for the history in the app
+  const trainingList = Object.keys(trainings).sort().reverse().map(function (key) {
+    const t = trainings[key];
+    return { date: t.date, day: t.day, deload: t.deload, sets: t.sets,
+      volume: Math.round(t.volume), exercises: Object.keys(t.ids).length };
+  });
 
   const days = daySheets.map(function (sheet) {
     const name = sheet.getName();
@@ -199,14 +234,37 @@ function buildState_(ss, daySheets, exercises, logRows, deloadWeeks) {
 
   return {
     apiVersion: API_VERSION, days: days, exercises: exercises, history: history,
-    sessions: sessions, deloadWeeks: deloadWeeks || DEFAULT_DELOAD_WEEKS,
+    sessions: sessions, deloadWeeks: extras.settings.deloadWeeks,
+    trainings: trainingList,                               // since 1.6.0
+    body: extras.body,                                     // since 1.6.0, oldest first
+    weightTarget: extras.settings.weightTarget,            // since 1.6.0
+  };
+}
+
+/**
+ * e1RM after Epley. For exercises with added weight (pull-ups) the body weight counts too,
+ * if one is known (since 1.6.0); without it only the added weight counts, as before.
+ */
+function e1rmOf_(kg, reps, bodyWeight) {
+  return (kg + (bodyWeight || 0)) * (1 + reps / 30);
+}
+
+/** Body weight on a date: the last weighing on or before it, else the first weighing at all. */
+function bodyWeightLookup_(body) {
+  const weighings = body.filter(function (b) { return b.weight !== null; });
+  return function (dateKey) {
+    if (!weighings.length) return null;
+    let weight = weighings[0].weight;
+    for (let i = 0; i < weighings.length && weighings[i].date <= dateKey; i++) weight = weighings[i].weight;
+    return weight;
   };
 }
 
 /**
  * Saves one training from the app (section 4.3). Payload:
  * { clientId, day, date: 'yyyy-MM-dd', deload, note,
- *   exercises: [{ id, kg, reps: [n|null, n|null, n|null, n|null], failure }] }
+ *   exercises: [{ id, kg, reps: [n|null, n|null, n|null, n|null], failure }],
+ *   replaces: { date, day } }   // optional since 1.6.0: a corrected training replaces this one
  */
 function saveTrainingFromApp_(p) {
   const ss = SpreadsheetApp.getActive();
@@ -245,20 +303,26 @@ function saveTrainingFromApp_(p) {
   if (!rows.length) return { ok: false, error: 'nothing_to_save' };
 
   // the log is read once and reused for the duplicate check, the info rows and the new state
-  const logRows = readLog_(ss);
+  let logRows = readLog_(ss);
+  const replacing = Boolean(p.replaces && p.replaces.date && p.replaces.day);
+  if (replacing) {
+    const kept = logRows.filter(function (r) { return !isTrainingRow_(r, p.replaces.date, p.replaces.day, tz); });
+    if (kept.length === logRows.length) return { ok: false, error: 'unknown_training' };
+    logRows = kept;
+  }
   const dateText = Utilities.formatDate(date, tz, 'yyyy-MM-dd');
-  const exists = logRows.some(function (r) {
-    return r[LOG.date] instanceof Date && r[LOG.day] === day && Utilities.formatDate(r[LOG.date], tz, 'yyyy-MM-dd') === dateText;
-  });
-  if (exists) return { ok: false, error: 'already_saved' };
+  if (logRows.some(function (r) { return isTrainingRow_(r, dateText, day, tz); })) return { ok: false, error: 'already_saved' };
 
-  const log = ss.getSheetByName(SHEET.log);
-  log.getRange(logRows.length + 2, 1, rows.length, LOG_HEADER.length).setValues(rows);
-  rememberClientId_(p.clientId);
   const allRows = logRows.concat(rows);
+  if (replacing) {
+    writeLog_(ss, allRows);
+  } else {
+    ss.getSheetByName(SHEET.log).getRange(logRows.length + 2, 1, rows.length, LOG_HEADER.length).setValues(rows);
+  }
+  rememberClientId_(p.clientId);
   refreshAllInfo_(ss, loadContext_(ss, allRows), daySheets);   // keeps the info rows of the sheet input in sync
   // state (since 1.4.0): the app needs no second request to show the new "zuletzt" and targets
-  const state = buildState_(ss, daySheets, exercises, allRows, readDeloadWeeks_(ss));
+  const state = buildState_(ss, daySheets, exercises, allRows, readExtras_(ss));
   return { ok: true, data: { savedSets: rows.length, state: state } };
 }
 
@@ -299,6 +363,105 @@ function updateExerciseNote_(p) {
   return { ok: false, error: 'unknown_exercise' };
 }
 
+/**
+ * One training with all sets, for the summary in the history (since 1.6.0). Payload: { date, day }
+ * A set is marked as record if it is the best set of its exercise and beats all earlier trainings.
+ */
+function getTraining_(p) {
+  const ss = SpreadsheetApp.getActive();
+  const tz = ss.getSpreadsheetTimeZone();
+  const exercises = readExerciseRows_(ss);
+  const byId = {};
+  exercises.forEach(function (ex) { byId[ex.id] = ex; });
+  const bodyWeightAt = bodyWeightLookup_(readBody_(ss));
+  const best = {};           // id -> { e1rm, repsAtZero } of trainings before this one
+  const result = { date: String(p.date), day: String(p.day), deload: false, note: '', exercises: [] };
+  const exerciseById = {};
+  readLog_(ss).forEach(function (r) {
+    const date = r[LOG.date], id = r[LOG.exerciseId], kg = r[LOG.kg], reps = r[LOG.reps];
+    if (!(date instanceof Date) || !id || typeof kg !== 'number' || typeof reps !== 'number') return;
+    const dateKey = Utilities.formatDate(date, tz, 'yyyy-MM-dd');
+    const addedWeight = byId[id] && byId[id].weightType === VALUE.addedWeight;
+    const value = e1rmOf_(kg, reps, addedWeight ? bodyWeightAt(dateKey) : null);
+    if (dateKey === result.date && String(r[LOG.day]) === result.day) {
+      result.deload = result.deload || r[LOG.deload] === true;
+      if (r[LOG.note]) result.note = String(r[LOG.note]);
+      let ex = exerciseById[id];
+      if (!ex) {
+        ex = exerciseById[id] = { id: String(id), name: byId[id] ? byId[id].name : String(r[LOG.exercise]), sets: [] };
+        result.exercises.push(ex);
+      }
+      ex.sets.push({ set: Number(r[LOG.set]), kg: kg, reps: reps, failure: r[LOG.failure] === true,
+        e1rm: Math.round(value * 10) / 10, isPr: false });
+    } else if (dateKey < result.date && r[LOG.deload] !== true) {
+      const b = best[id] || (best[id] = { e1rm: 0, repsAtZero: 0 });
+      b.e1rm = Math.max(b.e1rm, value);
+      if (kg === 0) b.repsAtZero = Math.max(b.repsAtZero, reps);
+    }
+  });
+  if (!result.exercises.length) return { ok: false, error: 'unknown_training' };
+  if (!result.deload) {
+    result.exercises.forEach(function (ex) {
+      ex.sets.sort(function (a, b) { return a.set - b.set; });
+      const b = best[ex.id];
+      if (!b) return;                                       // first training of this exercise: no record
+      const top = ex.sets.reduce(function (x, y) { return y.e1rm > x.e1rm || (y.e1rm === x.e1rm && y.reps > x.reps) ? y : x; });
+      const beatsE1rm = top.e1rm > Math.round(b.e1rm * 10) / 10;
+      const beatsReps = top.kg === 0 && top.e1rm === 0 && top.reps > b.repsAtZero;
+      top.isPr = beatsE1rm || beatsReps;
+    });
+  }
+  return { ok: true, data: result };
+}
+
+/** Deletes one training from the log (since 1.6.0). Payload: { date, day } */
+function deleteTraining_(p) {
+  const ss = SpreadsheetApp.getActive();
+  const tz = ss.getSpreadsheetTimeZone();
+  const logRows = readLog_(ss);
+  const kept = logRows.filter(function (r) { return !isTrainingRow_(r, p.date, p.day, tz); });
+  if (kept.length === logRows.length) return { ok: false, error: 'unknown_training' };
+  writeLog_(ss, kept);
+  const daySheets = daySheets_(ss);
+  refreshAllInfo_(ss, loadContext_(ss, kept), daySheets);
+  return { ok: true, data: { deletedSets: logRows.length - kept.length,
+    state: buildState_(ss, daySheets, readExerciseRows_(ss), kept, readExtras_(ss)) } };
+}
+
+/**
+ * Saves body values of one day into sheet "Körper" (since 1.6.0). Payload: { date, weight, waist }
+ * A value that is null stays as it is; a day that already has a row gets it updated.
+ */
+function saveBody_(p) {
+  const ss = SpreadsheetApp.getActive();
+  const date = parseIsoDate_(p.date);
+  if (!date) return { ok: false, error: 'invalid_date' };
+  const values = {};
+  for (const key of ['weight', 'waist']) {
+    if (p[key] === null || p[key] === undefined || p[key] === '') continue;
+    const value = Number(p[key]);
+    if (!(value >= BODY_LIMITS[key][0] && value <= BODY_LIMITS[key][1])) return { ok: false, error: 'invalid_body', detail: key };
+    values[key] = value;
+  }
+  if (!Object.keys(values).length) return { ok: false, error: 'invalid_body' };
+
+  const sheet = ss.getSheetByName(SHEET.body);
+  const tz = ss.getSpreadsheetTimeZone();
+  const dateKey = Utilities.formatDate(date, tz, 'yyyy-MM-dd');
+  const last = sheet.getLastRow();
+  const dates = last > 1 ? sheet.getRange(2, 1, last - 1, 1).getValues() : [];
+  let row = -1;
+  for (let i = 0; i < dates.length; i++) {
+    if (dates[i][0] instanceof Date && Utilities.formatDate(dates[i][0], tz, 'yyyy-MM-dd') === dateKey) row = i + 2;
+  }
+  if (row < 0) {
+    row = last + 1;
+    sheet.getRange(row, BODY.date + 1).setValue(date);
+  }
+  Object.keys(values).forEach(function (key) { sheet.getRange(row, BODY[key] + 1).setValue(values[key]); });
+  return { ok: true, data: { body: readBody_(ss) } };
+}
+
 // ===== Helpers =================================================================
 function readExerciseRows_(ss) {
   const sheet = ss.getSheetByName(SHEET.exercises);
@@ -336,34 +499,66 @@ function ensureExerciseColumns_(ss) {
   return result;
 }
 
-/** Adds the sheet "Einstellungen" with its default values if it is missing; never changes existing values. */
-function ensureSettingsSheet_(ss) {
-  if (ss.getSheetByName(SHEET.settings)) return;
-  const sheet = ss.insertSheet(SHEET.settings);
-  sheet.getRange(1, 1, 2, 3).setValues([
-    ['Einstellung', 'Wert', 'Erklärung'],
-    [SETTING_DELOAD_WEEKS, DEFAULT_DELOAD_WEEKS,
-      'Spätestens nach so vielen Wochen ohne Deload zeigt die App „Deload-Woche fällig“. ' +
-      'Sinkt die Leistung vorher bei mehreren Übungen, meldet sie sich früher (frühestens nach 4 Wochen).'],
-  ]);
-  sheet.getRange(1, 1, 1, 3).setFontWeight('bold');
-  sheet.setColumnWidth(1, 260);
-  sheet.setColumnWidth(3, 520);
-  sheet.getRange(2, 3).setWrap(true);
+/** Creates sheet "Einstellungen" and adds every missing setting with its default; never changes existing values. */
+function ensureSettings_(ss) {
+  let sheet = ss.getSheetByName(SHEET.settings);
+  if (!sheet) {
+    sheet = ss.insertSheet(SHEET.settings);
+    sheet.getRange(1, 1, 1, 3).setValues([['Einstellung', 'Wert', 'Erklärung']]).setFontWeight('bold');
+    sheet.setColumnWidth(1, 260);
+    sheet.setColumnWidth(3, 520);
+  }
+  const labels = sheet.getRange(1, 1, Math.max(sheet.getLastRow(), 1), 1).getValues()
+    .map(function (r) { return String(r[0]).trim(); });
+  SETTINGS.forEach(function (setting) {
+    if (labels.indexOf(setting.label) >= 0) return;
+    const row = sheet.getLastRow() + 1;
+    sheet.getRange(row, 1, 1, 3).setValues([[setting.label, setting.value, setting.help]]);
+    sheet.getRange(row, 3).setWrap(true);
+  });
 }
 
-/** Deload interval in weeks from sheet "Einstellungen"; null if the sheet or a valid value is missing. */
-function readDeloadWeeks_(ss) {
+/** Settings from sheet "Einstellungen"; a missing or invalid value falls back to its default. */
+function readSettings_(ss) {
+  const result = {};
+  SETTINGS.forEach(function (setting) { result[setting.key] = setting.value; });
   const sheet = ss.getSheetByName(SHEET.settings);
-  if (!sheet || sheet.getLastRow() < 1) return null;
-  const rows = sheet.getRange(1, 1, sheet.getLastRow(), 2).getValues();
-  for (let i = 0; i < rows.length; i++) {
-    if (String(rows[i][0]).trim() === SETTING_DELOAD_WEEKS) {
-      const weeks = Number(rows[i][1]);
-      return weeks >= 1 && weeks <= 52 ? weeks : null;
-    }
-  }
-  return null;
+  if (!sheet || sheet.getLastRow() < 1) return result;
+  sheet.getRange(1, 1, sheet.getLastRow(), 2).getValues().forEach(function (row) {
+    const setting = SETTINGS.filter(function (s) { return s.label === String(row[0]).trim(); })[0];
+    if (!setting || row[1] === '' || row[1] === null) return;
+    const value = Number(row[1]);
+    if (value >= setting.min && value <= setting.max) result[setting.key] = value;
+  });
+  return result;
+}
+
+/** Body values from sheet "Körper", oldest first: [{ date, weight, waist }], empty values as null. */
+function readBody_(ss) {
+  const sheet = ss.getSheetByName(SHEET.body);
+  if (!sheet || sheet.getLastRow() < 2) return [];
+  const tz = ss.getSpreadsheetTimeZone();
+  const number = function (value) { return typeof value === 'number' && value > 0 ? value : null; };
+  return sheet.getRange(2, 1, sheet.getLastRow() - 1, 3).getValues()
+    .filter(function (r) { return r[BODY.date] instanceof Date && (number(r[BODY.weight]) || number(r[BODY.waist])); })
+    .map(function (r) {
+      return { date: Utilities.formatDate(r[BODY.date], tz, 'yyyy-MM-dd'),
+        weight: number(r[BODY.weight]), waist: number(r[BODY.waist]) };
+    })
+    .sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
+}
+
+/** true if a log row belongs to the training of this date (yyyy-MM-dd) and day. */
+function isTrainingRow_(r, dateKey, day, tz) {
+  return r[LOG.date] instanceof Date && String(r[LOG.day]) === String(day) &&
+    Utilities.formatDate(r[LOG.date], tz, 'yyyy-MM-dd') === String(dateKey);
+}
+
+/** Writes the whole log again (after a correction or a deletion); formats of the sheet stay. */
+function writeLog_(ss, rows) {
+  const log = ss.getSheetByName(SHEET.log);
+  if (log.getLastRow() > 1) log.getRange(2, 1, log.getLastRow() - 1, LOG_HEADER.length).clearContent();
+  if (rows.length) log.getRange(2, 1, rows.length, LOG_HEADER.length).setValues(rows);
 }
 
 function wasClientIdSaved_(clientId) {

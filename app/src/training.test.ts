@@ -237,3 +237,24 @@ describe('daysDoneToday', () => {
     expect(daysDoneToday(days, '2026-11-14')).toEqual([]);
   });
 });
+
+describe('checkRecord – pull-ups with body weight (API 1.6.0+)', () => {
+  // history: 95 kg body weight + 5 kg × 6 → e1RM 120
+  const h = history(5, [6], { e1rm: 120, repsAtZero: 8 });
+
+  it('counts body weight plus added weight', () => {
+    const result = checkRecord(pullUp, h, 5, 7, false, 95);
+    expect(result.isRecord).toBe(true);
+    expect(result.kind).toBe('e1rm');
+    expect(result.text).toBe('Neuer Rekord: Körpergewicht + 5 kg × 7 (e1RM +3,3 kg)');
+  });
+
+  it('body weight alone is an e1RM record too', () => {
+    expect(checkRecord(pullUp, h, 0, 12, false, 95).text).toBe('Neuer Rekord: Körpergewicht × 12 (e1RM +13 kg)');
+    expect(checkRecord(pullUp, h, 0, 6, false, 95).isRecord).toBe(false);
+  });
+
+  it('without body weight the old rules apply', () => {
+    expect(checkRecord(pullUp, h, 0, 9, false, null).kind).toBe('bodyweightReps');
+  });
+});

@@ -2,7 +2,7 @@
 // survives iOS closing the app (requirements spec section 4.2), and turned into
 // the saveTraining payload (section 4.3).
 
-import type { SavePayload, State } from './api';
+import type { SavePayload, State, TrainingDetail } from './api';
 import { deloadStatus } from './deload';
 import { formatNumber, targetToday } from './training';
 
@@ -25,6 +25,7 @@ export interface Draft {
   note: string;
   items: DraftItem[];
   touched: boolean;                  // false = nothing entered yet, not worth keeping
+  replaces?: { date: string; day: string };   // set while correcting a saved training
 }
 
 const DRAFT_KEY = 'tt.draft';
@@ -77,6 +78,36 @@ export function newItem(state: State, id: string, deload: boolean): DraftItem {
     kg: kg != null ? formatNumber(kg) : '',
     reps: Array(SET_COUNT).fill(''),
     failure: false,
+  };
+}
+
+/**
+ * A saved training opened for correction: same exercises, weights and reps as in the log.
+ * Saving it replaces the saved training (API 1.6.0+). One weight per exercise: the first set's.
+ */
+export function draftFromTraining(detail: TrainingDetail): Draft {
+  return {
+    clientId: newClientId(),
+    day: detail.day,
+    date: detail.date,
+    deload: detail.deload,
+    note: detail.note,
+    items: detail.exercises.map((exercise) => {
+      const reps = Array.from({ length: SET_COUNT }, () => '');
+      exercise.sets.forEach((set) => {
+        if (set.set >= 1 && set.set <= SET_COUNT) reps[set.set - 1] = String(set.reps);
+      });
+      const lastSet = exercise.sets[exercise.sets.length - 1];
+      return {
+        id: exercise.id,
+        name: exercise.name,
+        kg: exercise.sets.length ? formatNumber(exercise.sets[0].kg) : '',
+        reps,
+        failure: lastSet?.failure ?? false,
+      };
+    }),
+    touched: true,                   // kept like a running training until saved or discarded
+    replaces: { date: detail.date, day: detail.day },
   };
 }
 
@@ -142,6 +173,7 @@ export function buildPayload(draft: Draft): BuildResult {
       deload: draft.deload,
       note: draft.note.trim(),
       exercises,
+      ...(draft.replaces ? { replaces: draft.replaces } : {}),
     },
   };
 }

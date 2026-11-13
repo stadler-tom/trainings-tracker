@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import type { Exercise, ExerciseHistory } from '../api';
+import { signedKg } from '../body';
 import { parseKg, type DraftItem } from '../draft';
 import { randomRecordPicture } from '../recordPictures';
 import { checkRecord, formatNumber, lastText, stepValue, targetToday } from '../training';
@@ -14,6 +15,7 @@ const props = defineProps<{
   isFirst: boolean;
   isLast: boolean;
   invalidField?: 'kg' | number | null;   // input marked after a failed save
+  bodyWeight?: number | null;            // newest weighing, for pull-up records (API 1.6.0+)
 }>();
 const emit = defineEmits<{ changed: []; move: [direction: -1 | 1]; remove: []; saveNote: [note: string]; showTools: [] }>();
 
@@ -32,10 +34,32 @@ const record = computed(() => {
   for (const text of props.item.reps) {
     const reps = Number(text);
     if (!Number.isInteger(reps) || reps <= 0) continue;
-    const result = checkRecord(props.exercise, props.history, kg, reps, props.deload);
+    const result = checkRecord(props.exercise, props.history, kg, reps, props.deload, props.bodyWeight ?? null);
     if (result.isRecord && (!best || reps > best.reps)) best = { text: result.text, kind: result.kind, reps };
   }
   return best;
+});
+
+// e1RM of the last sessions as a small curve (API 1.6.0+ sends up to 8)
+const CURVE = { width: 120, height: 30, pad: 3 };
+const curve = computed(() => {
+  const points = props.history?.recentE1rm ?? [];
+  if (points.length < 2) return null;
+  const values = points.map((p) => p.e1rm);
+  const low = Math.min(...values);
+  const range = Math.max(...values) - low || 1;
+  const step = (CURVE.width - 2 * CURVE.pad) / (points.length - 1);
+  const xy = values.map((v, i) => [
+    CURVE.pad + i * step,
+    CURVE.height - CURVE.pad - ((v - low) / range) * (CURVE.height - 2 * CURVE.pad),
+  ]);
+  const last = values[values.length - 1];
+  return {
+    line: xy.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' '),
+    end: xy[xy.length - 1],
+    text: `e1RM ${formatNumber(Math.round(last * 10) / 10)} kg · ${signedKg(last - values[0])} in ${points.length} Einheiten`,
+    rising: last >= values[0],
+  };
 });
 
 // chosen once per card, so the picture does not change while typing (section 11)
@@ -105,6 +129,13 @@ function finishNote() {
     <p v-else class="message error">Diese Übung fehlt im Übungsstamm des Sheets.</p>
 
     <p v-if="last" class="muted small">{{ last }}</p>
+    <div v-if="curve" class="curve" :class="{ rising: curve.rising }">
+      <svg :viewBox="`0 0 ${CURVE.width} ${CURVE.height}`" aria-hidden="true">
+        <polyline :points="curve.line" />
+        <circle :cx="curve.end[0]" :cy="curve.end[1]" r="3" />
+      </svg>
+      <span class="muted small">{{ curve.text }}</span>
+    </div>
     <p v-if="target && target.text" class="target">Ziel heute: <strong>{{ target.text }}</strong></p>
     <p v-if="exercise && exercise.repsMax > 0" class="muted small">Wdh: {{ exercise.repsMin }}–{{ exercise.repsMax }}</p>
 
@@ -167,6 +198,12 @@ function finishNote() {
 .note { text-align: left; color: var(--muted); min-height: 44px; padding: 0 10px; font-size: 0.9rem; }
 .note-input { width: 100%; }
 .target { margin: 0; }
+.curve { display: flex; align-items: center; gap: 10px; }
+.curve svg { width: 96px; height: 24px; flex-shrink: 0; overflow: visible; }
+.curve polyline { fill: none; stroke: var(--muted); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.curve circle { fill: var(--muted); }
+.curve.rising polyline { stroke: var(--done); }
+.curve.rising circle { fill: var(--done); }
 .weight { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .kg { flex-direction: row; align-items: center; gap: 6px; flex: 1; min-width: 110px; }
 .kg input { width: 100%; text-align: center; font-weight: 600; }

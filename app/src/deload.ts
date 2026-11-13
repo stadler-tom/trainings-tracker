@@ -45,8 +45,9 @@ function blockStart(sessions: Session[]): string {
 /** Number of exercises whose e1RM dropped in the last 2 sessions of this block. */
 function exercisesDropping(state: State, start: string): number {
   return Object.values(state.history).filter((h) => {
-    const recent = (h.recentE1rm ?? []).filter((s) => s.date >= start && s.e1rm > 0);
-    return recent.length >= 3 && recent[1].e1rm < recent[0].e1rm && recent[2].e1rm < recent[1].e1rm;
+    // the last 3 sessions of this block (the web API sends up to 8)
+    const recent = (h.recentE1rm ?? []).filter((s) => s.date >= start && s.e1rm > 0).slice(-3);
+    return recent.length === 3 && recent[1].e1rm < recent[0].e1rm && recent[2].e1rm < recent[1].e1rm;
   }).length;
 }
 

@@ -89,14 +89,29 @@ export interface RecordResult {
 /**
  * Checks one entered set against all earlier regular sets (section 4.5).
  * No record in deload sessions and for the first session of an exercise.
- * With added weight 0 kg (pull-ups at body weight) the highest rep count counts.
+ * Exercises with added weight (pull-ups): with a known body weight the e1RM of body weight
+ * plus added weight counts (API 1.6.0+, the web API computes the history the same way);
+ * without one, the highest rep count at 0 kg counts.
  */
 export function checkRecord(
   exercise: Exercise, history: ExerciseHistory | undefined, kg: number, reps: number, isDeload: boolean,
+  bodyWeight: number | null = null,
 ): RecordResult {
   const none: RecordResult = { isRecord: false, kind: null, text: '' };
   if (isDeload || !history?.lastSession || !(reps > 0) || !(kg >= 0)) return none;
-  if (exercise.weightType === 'Zusatzgewicht' && kg === 0) {
+  const addedWeight = exercise.weightType === 'Zusatzgewicht';
+  const withBody = addedWeight && bodyWeight !== null && bodyWeight > 0;
+  if (withBody) {
+    const value = e1rm(kg + (bodyWeight as number), reps);
+    if (value <= history.bestE1rm + EPSILON) return none;
+    const load = kg > 0 ? `Körpergewicht + ${formatNumber(kg)} kg` : 'Körpergewicht';
+    return {
+      isRecord: true,
+      kind: 'e1rm',
+      text: `Neuer Rekord: ${load} × ${reps} (e1RM +${formatNumber(Math.round((value - history.bestE1rm) * 10) / 10)} kg)`,
+    };
+  }
+  if (addedWeight && kg === 0) {
     if (reps > history.bestRepsAtZero) {
       return {
         isRecord: true,

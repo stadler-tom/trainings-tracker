@@ -1,7 +1,8 @@
 // Training summary shown after saving: sets with e1RM, total volume, PRs and a fun comparison.
 // Built from the saved payload and the history BEFORE saving, so records are judged against older trainings.
 
-import type { SavePayload, State } from './api';
+import type { SavePayload, State, TrainingDetail } from './api';
+import { latestBodyWeight } from './body';
 import { checkRecord, e1rm, formatNumber } from './training';
 
 export interface SummarySet {
@@ -24,12 +25,14 @@ export interface Summary {
   volume: number;                  // sum of kg × reps
   prCount: number;                 // exercises with a new record
   exercises: SummaryExercise[];
+  note?: string;
 }
 
 export function buildSummary(payload: SavePayload, before: State | null): Summary {
   let volume = 0;
   let prCount = 0;
   const exercises: SummaryExercise[] = [];
+  const bodyWeight = before ? latestBodyWeight(before.body) : null;
   for (const item of payload.exercises) {
     const exercise = before?.exercises.find((e) => e.id === item.id);
     const history = before?.history[item.id];
@@ -44,14 +47,29 @@ export function buildSummary(payload: SavePayload, before: State | null): Summar
     // the record is the best set of the exercise if it beats all earlier trainings (same rule as in the card)
     if (exercise) {
       const best = [...sets].sort((a, b) => b.reps - a.reps)[0];
-      if (checkRecord(exercise, history, kg, best.reps, payload.deload).isRecord) {
+      if (checkRecord(exercise, history, kg, best.reps, payload.deload, bodyWeight).isRecord) {
         best.isPr = true;
         prCount++;
       }
     }
     exercises.push({ name: exercise?.name ?? item.id, sets });
   }
-  return { day: payload.day, date: payload.date, deload: payload.deload, volume, prCount, exercises };
+  return { day: payload.day, date: payload.date, deload: payload.deload, volume, prCount, exercises, note: payload.note };
+}
+
+/** Summary of a training from the history; the web API marks the records (API 1.6.0+). */
+export function summaryFromDetail(detail: TrainingDetail): Summary {
+  let volume = 0;
+  let prCount = 0;
+  const exercises = detail.exercises.map((exercise) => {
+    const sets = exercise.sets.map((set) => {
+      volume += set.kg * set.reps;
+      if (set.isPr) prCount++;
+      return { set: set.set, kg: set.kg, reps: set.reps, e1rm: set.e1rm, isPr: set.isPr };
+    });
+    return { name: exercise.name, sets };
+  });
+  return { day: detail.day, date: detail.date, deload: detail.deload, volume, prCount, exercises, note: detail.note };
 }
 
 // Absurd units with rough weights in kg; the text uses the dative plural ("entspricht 46 Tigern").

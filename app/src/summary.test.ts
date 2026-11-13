@@ -65,3 +65,19 @@ describe('funComparison', () => {
     expect(funComparison(0)).toContain('Luft');
   });
 });
+
+describe('summaryFromDetail', () => {
+  it('sums volume and counts the records marked by the web API', async () => {
+    const { summaryFromDetail } = await import('./summary');
+    const summary = summaryFromDetail({
+      date: '2026-11-08', day: 'Push', deload: false, note: '',
+      exercises: [{ id: 'E06', name: 'Multipresse', sets: [
+        { set: 1, kg: 40, reps: 8, failure: false, e1rm: 50.7, isPr: true },
+        { set: 2, kg: 40, reps: 7, failure: false, e1rm: 49.3, isPr: false },
+      ] }],
+    });
+    expect(summary.volume).toBe(600);
+    expect(summary.prCount).toBe(1);
+    expect(summary.exercises[0].sets[0]).toEqual({ set: 1, kg: 40, reps: 8, e1rm: 50.7, isPr: true });
+  });
+});

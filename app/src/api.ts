@@ -3,7 +3,7 @@
 
 import type { Settings } from './storage';
 
-export const MIN_API_VERSION = '1.5.0';     // 1.5.0: data for the deload check
+export const MIN_API_VERSION = '1.6.0';     // 1.6.0: history, corrections, body values
 export const UPDATE_GUIDE_URL = 'https://github.com/stadler-tom/trainings-tracker/blob/main/template/UPDATE.md';
 
 export interface Exercise {
@@ -39,6 +39,36 @@ export interface Session {
   deload: boolean;
 }
 
+/** One saved training in the history list (API 1.6.0+). */
+export interface TrainingOverview {
+  date: string;                    // yyyy-MM-dd
+  day: string;
+  deload: boolean;
+  sets: number;
+  volume: number;                  // sum of kg × reps
+  exercises: number;
+}
+
+/** One day of sheet "Körper" (API 1.6.0+). */
+export interface BodyEntry {
+  date: string;                    // yyyy-MM-dd
+  weight: number | null;           // kg
+  waist: number | null;            // cm
+}
+
+/** One saved training with all sets (action getTraining, API 1.6.0+). */
+export interface TrainingDetail {
+  date: string;
+  day: string;
+  deload: boolean;
+  note: string;
+  exercises: {
+    id: string;
+    name: string;
+    sets: (LoggedSet & { e1rm: number; isPr: boolean })[];
+  }[];
+}
+
 export interface Day {
   name: string;
   lastDate: string | null;
@@ -53,6 +83,9 @@ export interface State {
   history: Record<string, ExerciseHistory>;
   sessions?: Session[];            // every training date, oldest first (API 1.5.0+)
   deloadWeeks?: number;            // sheet "Einstellungen" (API 1.5.0+)
+  trainings?: TrainingOverview[];  // newest first (API 1.6.0+)
+  body?: BodyEntry[];              // oldest first (API 1.6.0+)
+  weightTarget?: number;           // kg per week, sheet "Einstellungen" (API 1.6.0+)
 }
 
 export class ApiError extends Error {
@@ -67,7 +100,9 @@ const MESSAGES: Record<string, string> = {
   dev_url: 'Die Adresse endet auf /dev. Das ist die Test-Adresse des Editors; bitte die Web-App-URL auf /exec aus „Bereitstellungen verwalten“ eintragen.',
   not_configured: 'Web-API-Adresse und Schlüssel fehlen. Bitte in den Einstellungen eintragen.',
   invalid_response: 'Das Web-API hat unerwartet geantwortet. Ist die Adresse richtig?',
-  already_saved: 'Dieser Trainingstag ist für das Datum schon gespeichert. Korrekturen bitte direkt im Sheet.',
+  already_saved: 'Dieser Trainingstag ist für das Datum schon gespeichert. Zum Ändern im Verlauf auf das Training tippen und „Bearbeiten“ wählen.',
+  unknown_training: 'Dieses Training gibt es im Sheet nicht mehr. Wurde es dort geändert oder gelöscht?',
+  invalid_body: 'Bitte Gewicht zwischen 30 und 250 kg bzw. Bauchumfang zwischen 40 und 250 cm eintragen.',
   missing_weight: 'Bei einer Übung fehlt das Gewicht',
   invalid_reps: 'Bei einer Übung ist eine Wiederholungszahl ungültig',
   nothing_to_save: 'Es ist noch kein Satz eingetragen.',
@@ -164,6 +199,7 @@ export interface SavePayload {
   deload: boolean;
   note: string;
   exercises: { id: string; kg: number | null; reps: (number | null)[]; failure: boolean }[];
+  replaces?: { date: string; day: string };      // correction of a saved training (API 1.6.0+)
 }
 
 export const saveTraining = (settings: Settings, payload: SavePayload) =>
@@ -174,3 +210,12 @@ export const updateDaySlots = (settings: Settings, day: string, exerciseIds: str
 
 export const updateExerciseNote = (settings: Settings, id: string, note: string) =>
   call<{ id: string }>(settings, 'updateExerciseNote', { id, note });
+
+export const getTraining = (settings: Settings, date: string, day: string) =>
+  call<TrainingDetail>(settings, 'getTraining', { date, day });
+
+export const deleteTraining = (settings: Settings, date: string, day: string) =>
+  call<{ deletedSets: number; state: State }>(settings, 'deleteTraining', { date, day });
+
+export const saveBody = (settings: Settings, date: string, weight: number | null, waist: number | null) =>
+  call<{ body: BodyEntry[] }>(settings, 'saveBody', { date, weight, waist });
