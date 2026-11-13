@@ -68,10 +68,12 @@ export function todayIso(now = new Date()): string {
 export function newItem(state: State, id: string, deload: boolean): DraftItem {
   const exercise = state.exercises.find((e) => e.id === id);
   const target = exercise ? targetToday(exercise, state.history[id], deload) : null;
+  // added weight starts at 0 kg (body weight) until there is a last session
+  const kg = target?.kg ?? (exercise?.weightType === 'Zusatzgewicht' ? 0 : null);
   return {
     id,
     name: exercise?.name ?? id,
-    kg: target?.kg != null ? formatNumber(target.kg) : '',
+    kg: kg != null ? formatNumber(kg) : '',
     reps: Array(SET_COUNT).fill(''),
     failure: false,
   };
@@ -99,17 +101,20 @@ export function parseKg(text: string): number | null {
   return Number.isFinite(value) && value >= 0 ? value : null;
 }
 
-export type BuildResult = { payload: SavePayload; sets: number } | { error: string };
+/** itemIndex/field point to the input that needs fixing; field is 'kg' or the set index. */
+export type BuildResult =
+  | { payload: SavePayload; sets: number }
+  | { error: string; itemIndex?: number; field?: 'kg' | number };
 
 /** Checks the inputs and builds the saveTraining payload (section 4.3). */
 export function buildPayload(draft: Draft): BuildResult {
   const exercises: SavePayload['exercises'] = [];
   let sets = 0;
-  for (const item of draft.items) {
+  for (const [itemIndex, item] of draft.items.entries()) {
     const filled = item.reps.map((r) => r.trim());
     if (filled.every((r) => r === '')) continue;                 // exercise not done
     const kg = parseKg(item.kg);
-    if (kg === null) return { error: `Bei „${item.name}“ fehlt das Gewicht.` };
+    if (kg === null) return { error: `Bei „${item.name}“ fehlt das Gewicht.`, itemIndex, field: 'kg' };
     const reps: (number | null)[] = [];
     for (let i = 0; i < filled.length; i++) {
       if (filled[i] === '') {
@@ -118,7 +123,7 @@ export function buildPayload(draft: Draft): BuildResult {
       }
       const value = Number(filled[i]);
       if (!Number.isInteger(value) || value <= 0) {
-        return { error: `Bei „${item.name}“ ist Satz ${i + 1} keine gültige Wiederholungszahl.` };
+        return { error: `Bei „${item.name}“ ist Satz ${i + 1} keine gültige Wiederholungszahl.`, itemIndex, field: i };
       }
       reps.push(value);
       sets++;

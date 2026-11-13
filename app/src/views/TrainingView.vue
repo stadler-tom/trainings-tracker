@@ -21,6 +21,10 @@ const emit = defineEmits<{ back: []; discard: []; saved: [draft: Draft] }>();
 const message = ref('');
 const messageIsError = ref(false);
 const saving = ref(false);
+// messages of the save button are shown right above it (where the user looks when saving)
+const saveMessage = ref('');
+const saveIsError = ref(false);
+const invalid = ref<{ itemIndex: number; field: 'kg' | number } | null>(null);
 const toolsFor = ref<number | null>(null);
 
 const exercisesById = computed(() => {
@@ -44,6 +48,32 @@ const toAdd = ref('');
 function touch() {
   props.draft.touched = true;
   if (!messageIsError.value) message.value = '';
+  if (!saveIsError.value) saveMessage.value = '';
+}
+
+/** A change in the marked exercise clears the marking and its message. */
+function itemChanged(index: number) {
+  if (invalid.value?.itemIndex === index) {
+    invalid.value = null;
+    saveMessage.value = '';
+  }
+  touch();
+}
+
+function showSaveMessage(text: string, isError: boolean) {
+  saveMessage.value = text;
+  saveIsError.value = isError;
+}
+
+/** Scrolls to the marked exercise and puts the cursor into the input to fix. */
+function goToInvalid() {
+  const target = invalid.value;
+  if (!target) return;
+  const card = document.getElementById(`exercise-${target.itemIndex}`);
+  const input = card?.querySelector<HTMLInputElement>(
+    target.field === 'kg' ? '.kg input' : `.set:nth-child(${target.field + 1}) input`);
+  card?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  input?.focus({ preventScroll: true });
 }
 
 function showMessage(text: string, isError: boolean) {
@@ -120,15 +150,18 @@ const toolsTargetKg = computed(() => {
 async function save() {
   const result = buildPayload(props.draft);
   if ('error' in result) {
-    showMessage(result.error, true);
+    invalid.value = result.itemIndex !== undefined && result.field !== undefined
+      ? { itemIndex: result.itemIndex, field: result.field } : null;
+    showSaveMessage(result.error, true);
     return;
   }
+  invalid.value = null;
   saving.value = true;
-  message.value = '';
+  saveMessage.value = '';
   try {
     await saveTraining(props.settings, result.payload);
   } catch (error) {
-    showMessage(errorMessage(error), true);
+    showSaveMessage(errorMessage(error), true);
     saving.value = false;
     return;
   }
@@ -137,8 +170,7 @@ async function save() {
   saving.value = false;
   const fresh = props.state ? newDraft(props.state, props.draft.day, props.draft.date) : null;
   if (fresh) emit('saved', fresh);
-  showMessage(`Training gespeichert: ${result.sets} ${result.sets === 1 ? 'Satz' : 'Sätze'}.`, false);
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  showSaveMessage(`Training gespeichert: ${result.sets} ${result.sets === 1 ? 'Satz' : 'Sätze'}.`, false);
 }
 
 function discard() {
@@ -176,14 +208,16 @@ function discard() {
 
     <ExerciseCard
       v-for="(item, index) in draft.items"
+      :id="`exercise-${index}`"
       :key="item.id"
       :item="item"
+      :invalid-field="invalid?.itemIndex === index ? invalid.field : null"
       :exercise="exercisesById[item.id]"
       :history="state?.history[item.id]"
       :deload="draft.deload"
       :is-first="index === 0"
       :is-last="index === draft.items.length - 1"
-      @changed="touch"
+      @changed="itemChanged(index)"
       @move="moveExercise(index, $event)"
       @remove="removeExercise(index)"
       @save-note="saveNote(item.id, $event)"
@@ -201,6 +235,10 @@ function discard() {
       </label>
     </section>
 
+    <p v-if="saveMessage" class="message" :class="saveIsError ? 'error' : 'success'" role="alert">
+      {{ saveMessage }}
+      <button v-if="invalid" class="link" @click="goToInvalid">Zur Übung</button>
+    </p>
     <button class="primary big save" :disabled="saving" @click="save">
       {{ saving ? 'Speichere …' : 'Training speichern' }}
     </button>
@@ -225,4 +263,6 @@ function discard() {
 .check input { width: 24px; height: 24px; min-height: 0; }
 select { font: inherit; font-size: 16px; min-height: 44px; border-radius: 10px; padding: 0 8px; color: var(--text); background: var(--bg); }
 .save { text-align: center; }
+.link { display: block; margin-top: 6px; padding: 0; min-height: 44px; background: none; border: none;
+  color: inherit; font: inherit; font-weight: 600; text-decoration: underline; text-align: left; }
 </style>

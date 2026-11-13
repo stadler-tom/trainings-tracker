@@ -13,6 +13,7 @@ const props = defineProps<{
   deload: boolean;
   isFirst: boolean;
   isLast: boolean;
+  invalidField?: 'kg' | number | null;   // input marked after a failed save
 }>();
 const emit = defineEmits<{ changed: []; move: [direction: -1 | 1]; remove: []; saveNote: [note: string]; showTools: [] }>();
 
@@ -78,7 +79,7 @@ function finishNote() {
 </script>
 
 <template>
-  <section class="card exercise">
+  <section class="card exercise" :class="{ invalid: invalidField != null }">
     <div class="title">
       <h2>{{ exercise?.name ?? item.name }}</h2>
       <div class="order">
@@ -108,7 +109,7 @@ function finishNote() {
 
     <div class="weight">
       <button v-if="increment > 0" class="step" aria-label="Gewicht weniger" @click="stepKg(-1)">−</button>
-      <label class="kg">
+      <label class="kg" :class="{ invalid: invalidField === 'kg' }">
         <input
           v-model="item.kg"
           type="text"
@@ -125,7 +126,7 @@ function finishNote() {
     </div>
 
     <div class="sets">
-      <div v-for="(_, index) in item.reps" :key="index" class="set">
+      <div v-for="(_, index) in item.reps" :key="index" class="set" :class="{ invalid: invalidField === index }">
         <span class="muted small">S{{ index + 1 }}</span>
         <button class="step" :aria-label="`Satz ${index + 1} mehr`" @click="stepReps(index, 1)">+</button>
         <input
@@ -156,6 +157,8 @@ function finishNote() {
 </template>
 
 <style scoped>
+.exercise.invalid { outline: 2px solid var(--accent); outline-offset: -2px; }
+.invalid input { border-color: var(--accent); border-width: 2px; }
 .title { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
 .title h2 { padding-top: 10px; overflow-wrap: anywhere; }
 .order { display: flex; gap: 4px; flex-shrink: 0; }

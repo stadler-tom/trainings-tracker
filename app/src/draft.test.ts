@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { State } from './api';
-import { buildPayload, newDraft, parseKg, todayIso, type Draft } from './draft';
+import { buildPayload, newDraft, newItem, parseKg, todayIso, type Draft } from './draft';
 
 const state: State = {
   apiVersion: '1.1.0',
@@ -36,6 +36,16 @@ describe('newDraft', () => {
   });
 });
 
+describe('newItem', () => {
+  it('added weight without history starts at 0 kg, other types stay empty', () => {
+    const withPullUp: State = { ...state, exercises: [...state.exercises,
+      { id: 'E30', name: 'Klimmzüge', muscleGroup: 'Rücken', type: 'Grundübung', repsMin: 6, repsMax: 10,
+        increment: 2.5, weightType: 'Zusatzgewicht', active: true, note: '', barWeight: null }] };
+    expect(newItem(withPullUp, 'E30', false).kg).toBe('0');
+    expect(newItem(withPullUp, 'E08', false).kg).toBe('');
+  });
+});
+
 describe('parseKg', () => {
   it('accepts decimal comma and point', () => {
     expect(parseKg('72,5')).toBe(72.5);
@@ -56,12 +66,12 @@ describe('buildPayload', () => {
   });
   it('rejects reps without weight', () => {
     expect(buildPayload(draftWith([{ kg: '', reps: ['8', '', '', ''] }, {}, {}]))).toEqual({
-      error: 'Bei „Schrägbankdrücken Multipresse“ fehlt das Gewicht.',
+      error: 'Bei „Schrägbankdrücken Multipresse“ fehlt das Gewicht.', itemIndex: 0, field: 'kg',
     });
   });
   it('rejects invalid reps', () => {
     expect(buildPayload(draftWith([{ reps: ['8', '7,5', '', ''] }, {}, {}]))).toEqual({
-      error: 'Bei „Schrägbankdrücken Multipresse“ ist Satz 2 keine gültige Wiederholungszahl.',
+      error: 'Bei „Schrägbankdrücken Multipresse“ ist Satz 2 keine gültige Wiederholungszahl.', itemIndex: 0, field: 1,
     });
   });
   it('needs at least one set', () => {
