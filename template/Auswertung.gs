@@ -36,6 +36,8 @@ function setupAnalysis() {
     if (!s) throw new Error('Sheet "' + name + '" is missing: is this the converted Trainings-Auswertung-Google.xlsx?');
     return s;
   };
+  // the cell with the tracker address is named "Quelle"; make sure the name survived the .xlsx conversion
+  ss.setNamedRange('Quelle', sheet(SHEETS.settings).getRange(SOURCE_ROW, 3));
   const locale = ss.getSpreadsheetLocale();
   ss.setSpreadsheetLocale('en_US');            // formulas below use "," as separator
   SpreadsheetApp.flush();
@@ -60,25 +62,25 @@ function setupAnalysis() {
 function writeImportFormulas_(sheet) {
   // only complete sets, sorted like the sessions: exercise, date, set
   sheet(SHEETS.log).getRange('A2').setFormula(
-    '=IF(Quelle="",,IFERROR(LET(r,IMPORTRANGE(Quelle,"Log!A2:L"),' +
+    '=IF(Quelle="","",IFERROR(LET(r,IMPORTRANGE(Quelle,"Log!A2:L"),' +
     'v,FILTER(r,ISNUMBER(INDEX(r,0,1)),INDEX(r,0,3)<>"",ISNUMBER(INDEX(r,0,7)),ISNUMBER(INDEX(r,0,8))),' +
-    'SORT(v,3,TRUE,1,TRUE,6,TRUE)),))');
+    'SORT(v,3,TRUE,1,TRUE,6,TRUE)),""))');
   // helper columns per set for the session query
   const log = sheet(SHEETS.log);
   log.getRange('M1:S1').setValues([['e1RM Satz', 'Volumen Satz', 'Wdh S1', 'Wdh S2', 'Wdh S3', 'Wdh S4', 'Versagen 0/1']]);
   log.getRange('M2:S2').setFormulas([[
     '=ARRAYFORMULA(IF(A2:A="",,G2:G*(1+H2:H/30)))',
     '=ARRAYFORMULA(IF(A2:A="",,G2:G*H2:H))',
-    '=ARRAYFORMULA(IF(F2:F=1,H2:H,))',
-    '=ARRAYFORMULA(IF(F2:F=2,H2:H,))',
-    '=ARRAYFORMULA(IF(F2:F=3,H2:H,))',
-    '=ARRAYFORMULA(IF(F2:F=4,H2:H,))',
+    '=ARRAYFORMULA(IF(F2:F<>1,,H2:H))',
+    '=ARRAYFORMULA(IF(F2:F<>2,,H2:H))',
+    '=ARRAYFORMULA(IF(F2:F<>3,,H2:H))',
+    '=ARRAYFORMULA(IF(F2:F<>4,,H2:H))',
     '=ARRAYFORMULA(IF(A2:A="",,IF(I2:I=TRUE,1,0)))'
   ]]);
   sheet(SHEETS.exercises).getRange('A2').setFormula(
-    '=IF(Quelle="",,IFERROR(LET(r,IMPORTRANGE(Quelle,"Übungen!A2:I"),FILTER(r,INDEX(r,0,1)<>"")),))');
+    '=IF(Quelle="","",IFERROR(LET(r,IMPORTRANGE(Quelle,"Übungen!A2:I"),FILTER(r,INDEX(r,0,1)<>"")),""))');
   sheet(SHEETS.bodyData).getRange('A2').setFormula(
-    '=IF(Quelle="",,IFERROR(LET(r,IMPORTRANGE(Quelle,"Körper!A2:C"),SORT(FILTER(r,ISNUMBER(INDEX(r,0,1))),1,TRUE)),))');
+    '=IF(Quelle="","",IFERROR(LET(r,IMPORTRANGE(Quelle,"Körper!A2:C"),SORT(FILTER(r,ISNUMBER(INDEX(r,0,1))),1,TRUE)),""))');
 }
 
 /**
@@ -93,7 +95,7 @@ function writeSessionFormulas_(s) {
     'where C is not null group by C, A, J order by C, A ' +
     "label C 'ID', A 'Datum', J 'Deload', max(B) 'Tag', max(G) 'kg', count(H) 'Sätze', min(H) 'Wdh min', " +
     "max(M) 'e1RM', max(H) 'Wdh max', sum(N) 'Volumen', max(S) 'Versagen', max(O) 'S1', max(P) 'S2', " +
-    "max(Q) 'S3', max(R) 'S4'\",1),)");
+    "max(Q) 'S3', max(R) 'S4'\",1),\"\")");
   const each = function (expression) { return '=ARRAYFORMULA(IF(AH2:AH="",,' + expression + '))'; };
   const lookup = function (column) { return each('IFERROR(VLOOKUP(AH2:AH,' + EX + ',' + column + ',FALSE),"")'); };
   const formulas = {
@@ -136,14 +138,15 @@ function writeListFormulas_(s) {
   const SES = "'" + SHEETS.sessions + "'";
   const EX = "'" + SHEETS.exercises + "'!$A$2:$C";
   s.getRange('G1:I1').setValues([['IDs', 'Tag zuletzt', 'Reihenfolge']]);
-  s.getRange('G2').setFormula('=IFERROR(UNIQUE(FILTER(' + SES + '!A2:A,' + SES + '!A2:A<>"")),)');
+  s.getRange('G2').setFormula('=IFERROR(UNIQUE(FILTER(' + SES + '!A2:A,' + SES + '!A2:A<>"")),"")');
   // sessions are sorted by exercise and date: the last match is the latest session
-  s.getRange('H2').setFormula('=ARRAYFORMULA(IF(G2:G="",,XLOOKUP(G2:G,' + SES + '!A2:A,' + SES + '!D2:D,"",0,-1)))');
+  s.getRange('H2').setFormula('=ARRAYFORMULA(IF(G2:G="",,IFERROR(VLOOKUP(G2:G,SORT(FILTER({' + SES + '!A2:A,' +
+    SES + '!B2:B,' + SES + '!D2:D},' + SES + '!A2:A<>""),2,FALSE),3,FALSE),"")))');
   // days ordered by the weekday of their latest session, Monday first
   s.getRange('I2').setFormula('=ARRAYFORMULA(IF(G2:G="",,IFERROR(WEEKDAY(VLOOKUP(H2:H,QUERY(' + SES +
     '!A1:D,"select D, max(B) where A is not null group by D",1),2,FALSE),2),8)))');
   s.getRange('A2').setFormula('=IFERROR(ARRAYFORMULA(SORT(FILTER({G2:G,IFERROR(VLOOKUP(G2:G,' + EX + ',2,FALSE),G2:G),' +
-    'H2:H,IFERROR(VLOOKUP(G2:G,' + EX + ',3,FALSE),""),I2:I},G2:G<>""),5,TRUE,3,TRUE,4,TRUE,2,TRUE)),)');
+    'H2:H,IFERROR(VLOOKUP(G2:G,' + EX + ',3,FALSE),""),I2:I},G2:G<>""),5,TRUE,3,TRUE,4,TRUE,2,TRUE)),"")');
 }
 
 /** Shows "verbunden" once access is allowed; before that the cell offers "Zugriff erlauben". */
@@ -156,7 +159,7 @@ function writeConnectionCheck_(s) {
 function writeSparklines_(s) {
   const formulas = [];
   for (let i = 1; i <= OVERVIEW_ROWS; i++) {
-    const range = SHEETS.calc + '!' + SPARK_FROM + (i + 1) + ':' + SPARK_TO + (i + 1);
+    const range = "'" + SHEETS.calc + "'!" + SPARK_FROM + (i + 1) + ':' + SPARK_TO + (i + 1);
     formulas.push(['=IFERROR(SPARKLINE(FILTER(' + range + ',ISNUMBER(' + range + ')),' +
       '{"color","' + COLORS.ink + '";"linewidth",1.5}),"")']);
   }
@@ -179,6 +182,7 @@ function writeCharts_(sheet) {
   const add = function (target, builder) { target.insertChart(builder.build()); };
   const base = function (target, type, row, column, width, height, title) {
     return target.newChart().setChartType(type).setPosition(row, column, 0, 0).setNumHeaders(1)
+      .setHiddenDimensionStrategy(Charts.ChartHiddenDimensionStrategy.SHOW_BOTH)   // _calc is a hidden sheet
       .setOption('title', title).setOption('width', width).setOption('height', height)
       .setOption('titleTextStyle', { color: COLORS.ink, fontSize: 12, bold: true })
       .setOption('legend', { position: 'none' });
