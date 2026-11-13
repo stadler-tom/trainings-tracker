@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Exercise, ExerciseHistory, LoggedSet } from './api';
 import {
-  checkRecord, e1rm, formatNumber, lastText, platesPerSide, stepValue, targetToday, warmUpSets,
+  checkRecord, daysForToday, usualWeekday, e1rm, formatNumber, lastText, platesPerSide, stepValue, targetToday, warmUpSets,
 } from './training';
 
 const DEFAULT_PLATES = [25, 20, 15, 10, 5, 2.5, 1.25];
@@ -190,5 +190,38 @@ describe('stepValue', () => {
   });
   it('never below 0', () => {
     expect(stepValue(1, 2.5, -1)).toBe(0);
+  });
+});
+
+describe('usualWeekday / daysForToday', () => {
+  const day = (name: string, recentDates: string[] | undefined, lastDate: string | null = recentDates?.[0] ?? null) =>
+    ({ name, lastDate, recentDates, exerciseIds: [] });
+  // Tom's split: Beine Monday, Push Wednesday, Pull Friday, Upper Sunday
+  const days = [
+    day('Beine', ['2026-11-09', '2026-11-02', '2026-10-26', '2026-10-19']),
+    day('Push', ['2026-11-11', '2026-11-05', '2026-10-28', '2026-10-21']),   // one training moved to Thursday
+    day('Pull', ['2026-11-13', '2026-11-06']),
+    day('Upper', ['2026-11-08']),
+    day('Neu', []),
+  ];
+  it('majority of the recent trainings decides', () => {
+    expect(usualWeekday(days[0])).toBe(1);
+    expect(usualWeekday(days[1])).toBe(3);
+  });
+  it('tie: the older weekday stays (one moved training does not move the hint)', () => {
+    expect(usualWeekday(day('X', ['2026-11-13', '2026-11-04']))).toBe(3);        // Fri moved, Wed stays
+    expect(usualWeekday(day('X', ['2026-11-20', '2026-11-13', '2026-11-11', '2026-11-04']))).toBe(3);
+    expect(usualWeekday(day('X', ['2026-11-27', '2026-11-20', '2026-11-13', '2026-11-04']))).toBe(5); // 3 of 4: moved
+  });
+  it('no trainings: no weekday', () => {
+    expect(usualWeekday(days[4])).toBeNull();
+  });
+  it('older web API without recentDates uses lastDate', () => {
+    expect(usualWeekday(day('Pull', undefined, '2026-11-13'))).toBe(5);
+  });
+  it('marks the day of today', () => {
+    expect(daysForToday(days, new Date(2026, 10, 18))).toEqual(['Push']);      // Wednesday
+    expect(daysForToday(days, new Date(2026, 10, 15))).toEqual(['Upper']);     // Sunday
+    expect(daysForToday(days, new Date(2026, 10, 17))).toEqual([]);            // Tuesday: rest day
   });
 });

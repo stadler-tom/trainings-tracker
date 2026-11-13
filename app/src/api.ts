@@ -36,6 +36,7 @@ export interface ExerciseHistory {
 export interface Day {
   name: string;
   lastDate: string | null;
+  recentDates?: string[];          // last trainings, newest first (API 1.3.0+)
   exerciseIds: string[];
 }
 

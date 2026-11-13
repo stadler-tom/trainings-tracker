@@ -2,7 +2,8 @@
 // Pure functions without side effects so they can be unit tested.
 // Progression rules: requirements spec "Trainings-Tracker" section 9.
 
-import type { Exercise, ExerciseHistory } from './api';
+import type { Day, Exercise, ExerciseHistory } from './api';
+import { weekdayOf } from './format';
 
 const DECREASE_TOLERANCE = 2;      // rule 3 only if set 1 is more than this below reps min
 const WARM_UP = [                  // share of today's weight × reps
@@ -154,4 +155,30 @@ export function warmUpSets(exercise: Exercise, targetKg: number | null): WarmUpS
 export function stepValue(value: number | null, step: number, direction: 1 | -1): number {
   const next = (value ?? 0) + direction * step;
   return Math.max(0, Math.round(next * 1000) / 1000);
+}
+
+/**
+ * The weekday a training day is usually done on: the most frequent weekday of its
+ * recent trainings (newest first). On a tie the older weekday stays, so one moved
+ * training does not move the hint. null without trainings.
+ * Older web APIs only send lastDate, then that one date decides.
+ */
+export function usualWeekday(day: Day): number | null {
+  const dates = day.recentDates ?? (day.lastDate ? [day.lastDate] : []);
+  const counts = new Map<number, number>();
+  for (const date of dates) {
+    const weekday = weekdayOf(date);
+    counts.set(weekday, (counts.get(weekday) ?? 0) + 1);
+  }
+  let best: number | null = null;
+  for (const date of [...dates].reverse()) {  // oldest first, so a tie keeps the older weekday
+    const weekday = weekdayOf(date);
+    if (best === null || counts.get(weekday)! > counts.get(best)!) best = weekday;
+  }
+  return best;
+}
+
+/** Names of the days usually trained on the weekday of the given date. */
+export function daysForToday(days: Day[], today = new Date()): string[] {
+  return days.filter((day) => usualWeekday(day) === today.getDay()).map((day) => day.name);
 }

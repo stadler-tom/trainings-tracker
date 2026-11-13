@@ -12,9 +12,10 @@
  * Error codes are English; the app shows German messages.
  */
 
-const API_VERSION = '1.2.0';
+const API_VERSION = '1.3.0';
 const APP_URL = 'https://stadler-tom.github.io/trainings-tracker/';
 const KEY_PROPERTY = 'API_KEY';
+const RECENT_DATES = 4;                 // trainings per day sent for the "today" hint
 const CLIENT_IDS_PROPERTY = 'SAVED_CLIENT_IDS';
 const WEB_APP_URL_PROPERTY = 'WEB_APP_URL';
 const CLIENT_IDS_KEPT = 200;
@@ -142,7 +143,7 @@ function getState_() {
   exercises.forEach(function (ex) { idByName[ex.name] = ex.id; });
 
   const history = {};          // id -> { lastSession, bestE1rm, bestRepsAtZero }
-  const lastDateByDay = {};
+  const datesByDay = {};       // day -> { 'yyyy-MM-dd': true }
   const log = ss.getSheetByName(SHEET.log);
   if (log.getLastRow() > 1) {
     log.getRange(2, 1, log.getLastRow() - 1, LOG_HEADER.length).getValues().forEach(function (r) {
@@ -150,7 +151,7 @@ function getState_() {
       if (!(date instanceof Date) || !id || typeof kg !== 'number' || typeof reps !== 'number') return;
       const dateKey = Utilities.formatDate(date, tz, 'yyyy-MM-dd');
       const day = String(r[LOG.day] || '');
-      if (day && (!lastDateByDay[day] || dateKey > lastDateByDay[day])) lastDateByDay[day] = dateKey;
+      if (day) (datesByDay[day] || (datesByDay[day] = {}))[dateKey] = true;
       if (r[LOG.deload] === true) return;
 
       const h = history[id] || (history[id] = { lastSession: null, bestE1rm: 0, bestRepsAtZero: 0 });
@@ -169,7 +170,9 @@ function getState_() {
   const days = daySheets_(ss).map(function (sheet) {
     const name = sheet.getName();
     const ids = readSlots_(sheet, { idByName: idByName }).map(function (slot) { return slot.id; });
-    return { name: name, lastDate: lastDateByDay[name] || null, exerciseIds: ids.filter(Boolean) };
+    const dates = Object.keys(datesByDay[name] || {}).sort().reverse();
+    // recentDates (since 1.3.0): the last trainings of this day, newest first; the app derives the usual weekday
+    return { name: name, lastDate: dates[0] || null, recentDates: dates.slice(0, RECENT_DATES), exerciseIds: ids.filter(Boolean) };
   });
 
   return { apiVersion: API_VERSION, days: days, exercises: exercises, history: history };

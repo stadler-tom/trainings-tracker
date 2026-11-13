@@ -2,6 +2,7 @@
 import { computed } from 'vue';
 import { isOlderVersion, MIN_API_VERSION, UPDATE_GUIDE_URL, type State } from '../api';
 import { formatIsoDate } from '../format';
+import { daysForToday } from '../training';
 import LoadingSpinner from './LoadingSpinner.vue';
 
 const props = defineProps<{
@@ -12,6 +13,9 @@ const props = defineProps<{
   runningDay: string | null;
 }>();
 const emit = defineEmits<{ openDay: [day: string]; openSettings: []; reload: [] }>();
+
+// hint only: the day usually trained on today's weekday gets a frame (derived from the log)
+const todayDays = computed(() => (props.state ? daysForToday(props.state.days) : []));
 
 const apiOutdated = computed(() => props.state != null && isOlderVersion(props.state.apiVersion, MIN_API_VERSION));
 
@@ -54,11 +58,14 @@ const STAGGER_MS = 80;
         v-for="(day, index) in state.days"
         :key="day.name"
         class="big day"
-        :class="{ 'slide-in': animateDays }"
+        :class="{ 'slide-in': animateDays, today: todayDays.includes(day.name) }"
         :style="animateDays ? { animationDelay: `${(index + 1) * STAGGER_MS}ms` } : undefined"
         @click="emit('openDay', day.name)"
       >
-        <span>{{ day.name }}</span>
+        <span class="name">
+          {{ day.name }}
+          <span v-if="todayDays.includes(day.name)" class="today-label">Heute</span>
+        </span>
         <small class="muted">{{ day.lastDate ? 'zuletzt ' + formatIsoDate(day.lastDate) : 'noch nie' }}</small>
       </button>
       <p v-if="error" class="message error">{{ error }}</p>
@@ -68,6 +75,20 @@ const STAGGER_MS = 80;
 
 <style scoped>
 .continue { text-align: center; font-size: 1.05rem; }
+
+.day.today { outline: 3px solid var(--today); outline-offset: -3px; }
+.name { display: flex; align-items: center; gap: 10px; }
+.today-label {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--today);
+}
+@media (prefers-color-scheme: dark) {
+  .today-label { color: #0b1220; }
+}
 
 .slide-in {
   animation: slide-in 380ms cubic-bezier(0.22, 1, 0.36, 1) both;
