@@ -106,6 +106,7 @@ function finishNote() {
 
     <p v-if="last" class="muted small">{{ last }}</p>
     <p v-if="target && target.text" class="target">Ziel heute: <strong>{{ target.text }}</strong></p>
+    <p v-if="exercise && exercise.repsMax > 0" class="muted small">Wdh: {{ exercise.repsMin }}–{{ exercise.repsMax }}</p>
 
     <div class="weight">
       <button v-if="increment > 0" class="step" aria-label="Gewicht weniger" @click="stepKg(-1)">−</button>
