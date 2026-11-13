@@ -120,6 +120,12 @@ Wichtig: Den Link in den Einstellungen der App einfügen, nicht in Safari öffne
 - **Log:** alle gespeicherten Sätze. Korrekturen direkt hier.
 - **Körper:** Gewicht und Bauchumfang trägst du direkt im Sheet ein (Google-Sheets-App).
 
+## Auswertung
+
+Es gibt die Auswertung in zwei Formen, mit demselben Inhalt:
+- **Google Sheets** (live, auch auf dem Handy): Anleitung [AUSWERTUNG-GOOGLE.md](AUSWERTUNG-GOOGLE.md), Teil B. Den Vorlage-Link bekommst du von Tom.
+- **Excel** (am PC): siehe unten.
+
 ## Excel-Auswertung (optional, am PC)
 
 1. Lade die Datei [Trainings-Auswertung.xlsx](Trainings-Auswertung.xlsx) herunter (auf der Seite **Download** bzw. „Download raw file“).
