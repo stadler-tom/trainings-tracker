@@ -16,6 +16,8 @@ let startY: number | null = null;
 
 function onStart(event: TouchEvent) {
   if (!props.enabled || refreshing.value || window.scrollY > 0 || event.touches.length !== 1) return;
+  // inside an open window (summary, plate calculator) the finger scrolls that window, not the page
+  if ((event.target as Element | null)?.closest?.('[role="dialog"]')) return;
   startY = event.touches[0].clientY;
 }
 

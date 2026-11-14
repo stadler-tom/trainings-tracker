@@ -3,6 +3,7 @@
 import { computed } from 'vue';
 import type { BodyEntry } from '../api';
 import { movingAverage } from '../body';
+import { addDays, DAY_MS } from '../format';
 import { formatNumber } from '../training';
 
 const props = defineProps<{ body: BodyEntry[]; today: string }>();
@@ -11,9 +12,8 @@ const WIDTH = 340;
 const HEIGHT = 170;
 const PAD = { left: 38, right: 10, top: 12, bottom: 24 };
 const WEEKS = 12;
-const DAY_MS = 86_400_000;
 
-const from = computed(() => new Date(Date.parse(props.today) - WEEKS * 7 * DAY_MS).toISOString().slice(0, 10));
+const from = computed(() => addDays(props.today, -WEEKS * 7));
 const points = computed(() =>
   props.body.filter((b) => b.weight !== null && b.date >= from.value && b.date <= props.today) as { date: string; weight: number }[]);
 const average = computed(() => movingAverage(props.body).filter((p) => p.date >= from.value && p.date <= props.today));

@@ -7,14 +7,13 @@
 // - the deload week lasts 7 days from its first training; meanwhile the box stays ticked.
 
 import type { Session, State } from './api';
-import { formatIsoDate } from './format';
+import { addDays, daysBetween, formatIsoDate } from './format';
 
 export const DEFAULT_DELOAD_WEEKS = 8;
 const MIN_WEEKS_FOR_DROP = 4;
 const MIN_EXERCISES_DROPPING = 3;
 const BREAK_DAYS = 7;
 const DELOAD_WEEK_DAYS = 7;
-const DAY_MS = 86_400_000;
 
 export interface DeloadStatus {
   kind: 'none' | 'due' | 'active';
@@ -22,14 +21,6 @@ export interface DeloadStatus {
 }
 
 const NONE: DeloadStatus = { kind: 'none', reason: '' };
-
-function daysBetween(fromIso: string, toIso: string): number {
-  return Math.round((Date.parse(toIso) - Date.parse(fromIso)) / DAY_MS);
-}
-
-function addDays(iso: string, days: number): string {
-  return new Date(Date.parse(iso) + days * DAY_MS).toISOString().slice(0, 10);
-}
 
 /** First training of the current block (after a deload or a break). */
 function blockStart(sessions: Session[]): string {

@@ -69,6 +69,7 @@ const warmUp = computed(() => warmUpSets(props.exercise, props.targetKg));
   width: 100%;
   max-width: 560px;
   max-height: 85vh;
+  overscroll-behavior: contain;   /* the page behind does not scroll along */
   overflow-y: auto;
   border-radius: var(--radius) var(--radius) 0 0;
   padding-bottom: calc(env(safe-area-inset-bottom) + 16px);

@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { isOlderVersion, MIN_API_VERSION, UPDATE_GUIDE_URL, type State } from '../api';
-import { formatIsoDate } from '../format';
+import { formatIsoDate, localDate } from '../format';
 import { deloadStatus } from '../deload';
-import { todayIso } from '../draft';
 import { daysDoneToday, daysForToday } from '../training';
 import LoadingSpinner from './LoadingSpinner.vue';
 
@@ -13,17 +12,18 @@ const props = defineProps<{
   loading: boolean;
   error: string;
   runningDay: string | null;
+  today: string;                   // yyyy-MM-dd, follows midnight
 }>();
 const emit = defineEmits<{ openDay: [day: string]; openSettings: []; openHistory: []; openBody: []; reload: [] }>();
 
 // hint only: the day usually trained on today's weekday gets a frame (derived from the log)
-const todayDays = computed(() => (props.state ? daysForToday(props.state.days) : []));
+const todayDays = computed(() => (props.state ? daysForToday(props.state.days, localDate(props.today)) : []));
 // a day with a training saved today is shown as done (instead of the "today" hint)
-const doneDays = computed(() => (props.state ? daysDoneToday(props.state.days, todayIso()) : []));
+const doneDays = computed(() => (props.state ? daysDoneToday(props.state.days, props.today) : []));
 
 const apiOutdated = computed(() => props.state != null && isOlderVersion(props.state.apiVersion, MIN_API_VERSION));
 // shown only while a deload is due or running (the box in the training is then ticked)
-const deload = computed(() => (props.state ? deloadStatus(props.state, todayIso()) : null));
+const deload = computed(() => (props.state ? deloadStatus(props.state, props.today) : null));
 
 // The day cards slide in one after another only when they arrive from loading,
 // not every time the start screen is shown again with data already there.

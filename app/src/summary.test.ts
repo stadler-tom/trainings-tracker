@@ -39,6 +39,18 @@ describe('buildSummary', () => {
     expect(summary.exercises[0].sets.filter((s) => s.isPr).map((s) => s.set)).toEqual([1]);
     expect(summary.exercises[1].sets.some((s) => s.isPr)).toBe(false);
   });
+  it('added weight: 1RM with body weight, volume with the added weight only', () => {
+    const withPullUps: State = {
+      ...state,
+      exercises: [...state.exercises, { id: 'E30', name: 'Klimmzüge', muscleGroup: 'Rücken', type: 'Grundübung',
+        repsMin: 6, repsMax: 10, increment: 2.5, weightType: 'Zusatzgewicht', active: true, note: '', barWeight: null }],
+      body: [{ date: '2026-11-12', weight: 90, waist: null }],
+    };
+    const summary = buildSummary({ ...payload(), exercises: [{ id: 'E30', kg: 0, reps: [6, null, null, null], failure: false }] },
+      withPullUps);
+    expect(Math.round(summary.exercises[0].sets[0].e1rm)).toBe(108);      // 90 × (1 + 6/30)
+    expect(summary.volume).toBe(0);
+  });
   it('no PRs in a deload training', () => {
     expect(buildSummary(payload(true), state).prCount).toBe(0);
   });

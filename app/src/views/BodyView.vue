@@ -3,7 +3,7 @@
 import { computed, ref, watch } from 'vue';
 import { errorMessage, saveBody, type State } from '../api';
 import { signedKg, waistTrend, weightCheck } from '../body';
-import { parseKg, todayIso } from '../draft';
+import { parseKg } from '../draft';
 import { formatIsoDate } from '../format';
 import type { Settings } from '../storage';
 import { formatNumber } from '../training';
@@ -13,11 +13,15 @@ const props = defineProps<{
   state: State | null;
   settings: Settings;
   applyState: (state: State) => void;
+  today: string;                   // yyyy-MM-dd, follows midnight
 }>();
 const emit = defineEmits<{ back: [] }>();
 
-const today = todayIso();
-const date = ref(today);
+const date = ref(props.today);
+// after midnight the form moves on to the new day, unless another day was chosen
+watch(() => props.today, (now, before) => {
+  if (date.value === before) date.value = now;
+});
 const weight = ref('');
 const waist = ref('');
 const saving = ref(false);
@@ -26,7 +30,7 @@ const messageIsError = ref(false);
 
 const body = computed(() => props.state?.body ?? []);
 const target = computed(() => props.state?.weightTarget);
-const check = computed(() => weightCheck(body.value, target.value, today));
+const check = computed(() => weightCheck(body.value, target.value, props.today));
 const waistInfo = computed(() => waistTrend(body.value));
 
 // values already saved for the chosen day are shown for correction

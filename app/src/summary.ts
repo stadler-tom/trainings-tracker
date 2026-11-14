@@ -37,11 +37,13 @@ export function buildSummary(payload: SavePayload, before: State | null): Summar
     const exercise = before?.exercises.find((e) => e.id === item.id);
     const history = before?.history[item.id];
     const kg = item.kg ?? 0;
+    // added weight (pull-ups): the 1RM includes the body weight, like the record check
+    const load = exercise?.weightType === 'Zusatzgewicht' && bodyWeight ? kg + bodyWeight : kg;
     const sets: SummarySet[] = [];
     item.reps.forEach((reps, index) => {
       if (reps === null) return;
       volume += kg * reps;
-      sets.push({ set: index + 1, kg, reps, e1rm: e1rm(kg, reps), isPr: false });
+      sets.push({ set: index + 1, kg, reps, e1rm: e1rm(load, reps), isPr: false });
     });
     if (!sets.length) continue;
     // the record is the best set of the exercise if it beats all earlier trainings (same rule as in the card)

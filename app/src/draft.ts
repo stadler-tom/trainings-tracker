@@ -4,6 +4,9 @@
 
 import type { SavePayload, State } from './api';
 import { deloadStatus } from './deload';
+import { todayIso } from './format';
+
+export { todayIso };      // kept here for existing imports
 import { formatNumber, targetToday } from './training';
 
 export const SET_COUNT = 4;
@@ -22,6 +25,7 @@ export interface Draft {
   day: string;
   date: string;                      // yyyy-MM-dd
   deload: boolean;
+  deloadChosen?: boolean;            // true once the user ticked or unticked "Deload" by hand
   note: string;
   items: DraftItem[];
   touched: boolean;                  // false = nothing entered yet, not worth keeping
@@ -59,11 +63,6 @@ function newClientId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
-/** Local date as yyyy-MM-dd. */
-export function todayIso(now = new Date()): string {
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-}
 
 /** Empty input for one exercise, weight prefilled with today's target. */
 export function newItem(state: State, id: string, deload: boolean): DraftItem {
@@ -103,15 +102,17 @@ export function parseKg(text: string): number | null {
   return Number.isFinite(value) && value >= 0 ? value : null;
 }
 
-/** itemIndex/field point to the input that needs fixing; field is 'kg' or the set index. */
+/** field points to the input that needs fixing: the date, or 'kg'/the set index of exercise itemIndex. */
 export type BuildResult =
   | { payload: SavePayload; sets: number }
-  | { error: string; itemIndex?: number; field?: 'kg' | number };
+  | { error: string; itemIndex?: number; field?: 'date' | 'kg' | number };
 
 /** Checks the inputs and builds the saveTraining payload (section 4.3). */
 export function buildPayload(draft: Draft): BuildResult {
   const exercises: SavePayload['exercises'] = [];
   let sets = 0;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(draft.date)) return { error: 'Bitte ein Datum wählen.', field: 'date' };
+  if (draft.date > todayIso()) return { error: 'Das Datum liegt in der Zukunft.', field: 'date' };
   for (const [itemIndex, item] of draft.items.entries()) {
     const filled = item.reps.map((r) => r.trim());
     if (filled.every((r) => r === '')) continue;                 // exercise not done

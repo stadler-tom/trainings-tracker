@@ -1,17 +1,14 @@
 <script setup lang="ts">
 // Summary after saving or from the history: total volume, PRs, sets with e1RM and a fun comparison.
 import { computed } from 'vue';
+import { formatLongDate } from '../format';
 import { formatNumber } from '../training';
 import { funComparison, type Summary } from '../summary';
 
 const props = defineProps<{ summary: Summary; closeLabel?: string }>();
 const emit = defineEmits<{ close: [] }>();
 
-const dateText = computed(() => {
-  const [year, month, day] = props.summary.date.split('-').map(Number);
-  return new Date(year, month - 1, day).toLocaleDateString('de-DE',
-    { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' });
-});
+const dateText = computed(() => formatLongDate(props.summary.date));
 const volumeText = computed(() => `${Math.round(props.summary.volume).toLocaleString('de-DE')} kg`);
 const prText = computed(() => `${props.summary.prCount} ${props.summary.prCount === 1 ? 'PR' : 'PRs'}`);
 const fun = funComparison(props.summary.volume);   // picked once per summary
@@ -62,6 +59,7 @@ const fun = funComparison(props.summary.volume);   // picked once per summary
   width: 100%;
   max-width: 560px;
   max-height: 92vh;
+  overscroll-behavior: contain;   /* the page behind does not scroll along */
   overflow-y: auto;
   padding: 16px 20px calc(env(safe-area-inset-bottom) + 20px);
   border-radius: 20px 20px 0 0;

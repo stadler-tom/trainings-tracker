@@ -3,6 +3,7 @@
 // A tap loads the training and shows its summary. Read only: the log is never changed from the app.
 import { computed, ref } from 'vue';
 import { errorMessage, getTraining, type State, type TrainingOverview } from '../api';
+import { formatMonth, formatShortDate } from '../format';
 import type { Settings } from '../storage';
 import { summaryFromDetail, type Summary } from '../summary';
 import LoadingSpinner from './LoadingSpinner.vue';
@@ -17,8 +18,7 @@ const emit = defineEmits<{ back: [] }>();
 const months = computed(() => {
   const groups: { label: string; trainings: TrainingOverview[] }[] = [];
   for (const training of props.state?.trainings ?? []) {
-    const [year, month] = training.date.split('-').map(Number);
-    const label = new Date(year, month - 1, 1).toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
+    const label = formatMonth(training.date);
     const last = groups[groups.length - 1];
     if (last?.label === label) last.trainings.push(training);
     else groups.push({ label, trainings: [training] });
@@ -26,10 +26,6 @@ const months = computed(() => {
   return groups;
 });
 
-function dateText(iso: string): string {
-  const [year, month, day] = iso.split('-').map(Number);
-  return new Date(year, month - 1, day).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' });
-}
 
 const opening = ref<string | null>(null);      // key of the training being loaded
 const summary = ref<Summary | null>(null);
@@ -79,7 +75,7 @@ function close() {
           <span v-if="training.deload" class="badge">Deload</span>
         </span>
         <small class="muted">
-          {{ dateText(training.date) }} ·
+          {{ formatShortDate(training.date) }} ·
           <template v-if="opening === training.date + '|' + training.day">lade …</template>
           <template v-else>{{ training.sets }} Sätze · {{ training.volume.toLocaleString('de-DE') }} kg</template>
         </small>

@@ -3,6 +3,7 @@
 import { computed, nextTick, ref } from 'vue';
 import { errorMessage, saveTraining, updateDaySlots, updateExerciseNote, type Exercise, type State } from '../api';
 import { latestBodyWeight } from '../body';
+import { deloadStatus } from '../deload';
 import { buildPayload, MAX_EXERCISES, newDraft, newItem, parseKg, type Draft } from '../draft';
 import type { Settings } from '../storage';
 import { buildSummary, type Summary } from '../summary';
@@ -19,6 +20,7 @@ const props = defineProps<{
   loadError: string;
   reload: () => Promise<void>;
   applyState: (state: State) => void;
+  today: string;                                // yyyy-MM-dd, follows midnight
 }>();
 const emit = defineEmits<{ back: []; discard: []; saved: [draft: Draft] }>();
 
@@ -29,7 +31,8 @@ const saving = ref(false);
 const saveMessage = ref('');
 const saveIsError = ref(false);
 const summary = ref<Summary | null>(null);     // shown after a successful save
-const invalid = ref<{ itemIndex: number; field: 'kg' | number } | null>(null);
+// input marked after a failed check: the date, or a field of one exercise
+const invalid = ref<{ itemIndex: number | null; field: 'date' | 'kg' | number } | null>(null);
 const toolsFor = ref<number | null>(null);
 
 const exercisesById = computed(() => {
@@ -56,6 +59,23 @@ function touch() {
   if (!saveIsError.value) saveMessage.value = '';
 }
 
+/** A new date re-evaluates whether a deload is due, unless "Deload" was set by hand. */
+function dateChanged() {
+  if (invalid.value?.field === 'date') {
+    invalid.value = null;
+    saveMessage.value = '';
+  }
+  if (!props.draft.deloadChosen && props.state && /^\d{4}-\d{2}-\d{2}$/.test(props.draft.date)) {
+    props.draft.deload = deloadStatus(props.state, props.draft.date).kind !== 'none';
+  }
+  touch();
+}
+
+function deloadChanged() {
+  props.draft.deloadChosen = true;
+  touch();
+}
+
 /** A change in the marked exercise clears the marking and its message. */
 function itemChanged(index: number) {
   if (invalid.value?.itemIndex === index) {
@@ -74,6 +94,12 @@ function showSaveMessage(text: string, isError: boolean) {
 function goToInvalid() {
   const target = invalid.value;
   if (!target) return;
+  if (target.field === 'date') {
+    const dateInput = document.querySelector<HTMLInputElement>('.head .date input');
+    dateInput?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    dateInput?.focus({ preventScroll: true });
+    return;
+  }
   const card = document.getElementById(`exercise-${target.itemIndex}`);
   const input = card?.querySelector<HTMLInputElement>(
     target.field === 'kg' ? '.kg input' : `.set:nth-child(${target.field + 1}) input`);
@@ -157,8 +183,7 @@ const toolsTargetKg = computed(() => {
 async function save() {
   const result = buildPayload(props.draft);
   if ('error' in result) {
-    invalid.value = result.itemIndex !== undefined && result.field !== undefined
-      ? { itemIndex: result.itemIndex, field: result.field } : null;
+    invalid.value = result.field !== undefined ? { itemIndex: result.itemIndex ?? null, field: result.field } : null;
     showSaveMessage(result.error, true);
     return;
   }
@@ -209,11 +234,11 @@ function discard() {
 
     <section class="card head">
       <div class="row">
-        <label class="date">Datum
-          <input v-model="draft.date" type="date" required @change="touch" />
+        <label class="date" :class="{ invalid: invalid?.field === 'date' }">Datum
+          <input v-model="draft.date" type="date" required :max="today" @change="dateChanged" />
         </label>
         <label class="check">
-          <input v-model="draft.deload" type="checkbox" @change="touch" />
+          <input v-model="draft.deload" type="checkbox" @change="deloadChanged" />
           Deload
         </label>
       </div>
@@ -229,7 +254,7 @@ function discard() {
       :id="`exercise-${index}`"
       :key="item.id"
       :item="item"
-      :invalid-field="invalid?.itemIndex === index ? invalid.field : null"
+      :invalid-field="invalid?.itemIndex === index && invalid.field !== 'date' ? invalid.field : null"
       :exercise="exercisesById[item.id]"
       :history="state?.history[item.id]"
       :deload="draft.deload"
@@ -256,7 +281,7 @@ function discard() {
 
     <p v-if="saveMessage" class="message" :class="saveIsError ? 'error' : 'success'" role="alert">
       {{ saveMessage }}
-      <button v-if="invalid" class="link" @click="goToInvalid">Zur Übung</button>
+      <button v-if="invalid" class="link" @click="goToInvalid">{{ invalid.field === 'date' ? 'Zum Datum' : 'Zur Übung' }}</button>
     </p>
     <button class="primary big save" :disabled="saving" @click="save">
       {{ saving ? 'Speichere …' : 'Training speichern' }}
@@ -280,6 +305,7 @@ function discard() {
 .head .row { display: flex; gap: 12px; align-items: flex-end; }
 .date { flex: 1; }
 .date input { width: 100%; }
+.date.invalid input { border-color: var(--accent); border-width: 2px; }
 .check { flex-direction: row; align-items: center; gap: 10px; min-height: 44px; color: var(--text); font-size: 1rem; }
 .check input { width: 24px; height: 24px; min-height: 0; }
 select { font: inherit; font-size: 16px; min-height: 44px; border-radius: 10px; padding: 0 8px; color: var(--text); background: var(--bg); }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue';
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import StartView from './views/StartView.vue';
 import TrainingView from './views/TrainingView.vue';
 import SettingsView from './views/SettingsView.vue';
@@ -8,6 +8,7 @@ import BodyView from './views/BodyView.vue';
 import PullToRefresh from './views/PullToRefresh.vue';
 import { errorMessage, getState, type State } from './api';
 import { loadDraft, newDraft, removeDraft, saveDraft, type Draft } from './draft';
+import { todayIso } from './format';
 import { loadCachedState, loadSettings, parseSetupLink, saveCachedState, saveSettings, type Settings } from './storage';
 
 // A handful of screens: a simple switch is enough, no router needed.
@@ -18,6 +19,11 @@ const settings = ref<Settings>(loadSettings());
 const state = ref<State | null>(loadCachedState<State>(settings.value.apiUrl));
 const draft = ref<Draft | null>(loadDraft());
 const loading = ref(false);
+// the date of today, renewed when the app comes back to the foreground (it may have stayed open past midnight)
+const today = ref(todayIso());
+function updateToday() {
+  if (document.visibilityState === 'visible') today.value = todayIso();
+}
 const loadError = ref('');
 
 // every change of the running training is stored at once (section 4.2)
@@ -84,6 +90,9 @@ function applySettings(updated: Settings) {
   reload();
 }
 
+onMounted(() => document.addEventListener('visibilitychange', updateToday));
+onBeforeUnmount(() => document.removeEventListener('visibilitychange', updateToday));
+
 onMounted(() => {
   // a setup link opened directly in the browser (works outside iOS home screen apps)
   const fromLink = parseSetupLink(location.href);
@@ -99,8 +108,8 @@ onMounted(() => {
 </script>
 
 <template>
-  <!-- not during a training: there a pull while scrolling the inputs would reload by accident -->
-  <PullToRefresh :enabled="screen !== 'training'" />
+  <!-- only on screens without inputs: elsewhere a pull would reload and drop unsaved entries -->
+  <PullToRefresh :enabled="screen === 'start' || screen === 'history'" />
   <StartView
     v-if="screen === 'start'"
     :configured="Boolean(settings.apiUrl && settings.apiKey)"
@@ -108,6 +117,7 @@ onMounted(() => {
     :loading="loading"
     :error="loadError"
     :running-day="draft?.touched ? draft.day : null"
+    :today="today"
     @open-day="openDay"
     @open-settings="screen = 'settings'"
     @open-history="screen = 'history'"
@@ -122,6 +132,7 @@ onMounted(() => {
     :load-error="loadError"
     :reload="reload"
     :apply-state="applyState"
+    :today="today"
     @back="screen = 'start'"
     @discard="discardTraining"
     @saved="draft = $event"
@@ -137,6 +148,7 @@ onMounted(() => {
     :state="state"
     :settings="settings"
     :apply-state="applyState"
+    :today="today"
     @back="screen = 'start'"
   />
   <SettingsView

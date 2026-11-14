@@ -74,6 +74,12 @@ describe('buildPayload', () => {
       error: 'Bei „Schrägbankdrücken Multipresse“ ist Satz 2 keine gültige Wiederholungszahl.', itemIndex: 0, field: 1,
     });
   });
+  it('needs a date that is not in the future', () => {
+    const noDate = { ...draftWith([{ reps: ['8', '', '', ''] }, {}, {}]), date: '' };
+    expect(buildPayload(noDate)).toEqual({ error: 'Bitte ein Datum wählen.', field: 'date' });
+    const future = { ...draftWith([{ reps: ['8', '', '', ''] }, {}, {}]), date: '2999-01-01' };
+    expect(buildPayload(future)).toEqual({ error: 'Das Datum liegt in der Zukunft.', field: 'date' });
+  });
   it('needs at least one set', () => {
     expect(buildPayload(draftWith([{}, {}, {}]))).toEqual({ error: 'Es ist noch kein Satz eingetragen.' });
   });

@@ -6,13 +6,13 @@
 // Pure functions, unit tested in body.test.ts.
 
 import type { BodyEntry } from './api';
+import { addDays } from './format';
 import { formatNumber } from './training';
 
 export const DEFAULT_WEIGHT_TARGET = -0.5;       // kg per week
 const MIN_WEIGHINGS_PER_WEEK = 3;
 const TOLERANCE_KG = 0.5;                        // per two weeks
 const MOVING_AVERAGE_DAYS = 7;
-const DAY_MS = 86_400_000;
 
 export interface WeekAverage {
   start: string;                                 // Monday, yyyy-MM-dd
@@ -30,10 +30,6 @@ export interface WeightCheck {
   status: WeightStatus;
   text: string;                                  // German, e.g. "Du nimmst langsamer ab als geplant."
   advice: string;                                // German; empty if nothing to change
-}
-
-function addDays(iso: string, days: number): string {
-  return new Date(Date.parse(iso) + days * DAY_MS).toISOString().slice(0, 10);
 }
 
 /** Monday of the week of a date (yyyy-MM-dd). */
