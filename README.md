@@ -13,7 +13,7 @@ Web-App zum Erfassen von Krafttraining am Handy. Jeder Nutzer speichert seine Da
 ## Aufbau
 
 - **App** (`app/src`): `App.vue` schaltet zwischen Start, Training, Verlauf, Körper und Einstellungen. Die Rechenlogik (Ziel heute, Rekord, Scheibenrechner, Aufwärmsätze) steht in `training.ts`, der Deload-Check in `deload.ts`, die Gewichtsauswertung in `body.ts`, das laufende Training und die Speicherdaten in `draft.ts`, die Aufrufe des Web-API in `api.ts`. Tests liegen jeweils daneben (`*.test.ts`).
-- **Web-API ab 1.6.0**: zusätzlich `getTraining`, `deleteTraining` (Verlauf), `saveTraining` mit `replaces` (Training korrigieren) und `saveBody` (Blatt Körper). Das Blatt **Einstellungen** im Sheet enthält Deload-Intervall und Gewichtsziel pro Woche; `setupApi` ergänzt fehlende Zeilen.
+- **Web-API ab 1.6.0**: zusätzlich `getTraining` (Verlauf, nur lesend) und `saveBody` (Blatt Körper). **Das Log wird nur ergänzt:** Keine Aktion ändert oder löscht gespeicherte Trainings; Korrekturen nur von Hand im Sheet (ab 1.6.1). Das Blatt **Einstellungen** im Sheet enthält Deload-Intervall und Gewichtsziel pro Woche; `setupApi` ergänzt fehlende Zeilen.
 - **Script** (`api/`): `Save.gs` ist der Sheet-Aufbau zur Laufzeit (Tagesblätter, Info-Zeilen, Speichern im Sheet), `Setup.gs` baut die Vorlage, `Api.gs` ist das Web-API für die App (Version in `API_VERSION`).
 - Die App rechnet, das Web-API liest und schreibt nur.
 - Jede Angabe steht an genau einer Stelle: Ein Trainingstag heißt so wie sein Reiter (das Log zieht Umbenennungen nach), eine Übung so wie im Blatt Übungen (Tagesblätter und Log verweisen über die ID).

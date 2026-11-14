@@ -6,3 +6,4 @@
 - Production data: Tom's real Google Sheet must never be touched during development. Develop and test only against a copy or the template.
 - Public repository: never commit keys, web API URLs, CSV links or personal data.
 - Only implement what is requested; propose extras and wait for approval.
+- The log is append-only: neither app nor web API may delete or overwrite saved trainings. No delete function anywhere; corrections are made by hand in the sheet.

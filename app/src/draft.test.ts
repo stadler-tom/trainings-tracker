@@ -85,20 +85,3 @@ describe('todayIso', () => {
   });
 });
 
-describe('draftFromTraining', () => {
-  it('fills the items from a saved training and marks it as correction', async () => {
-    const { draftFromTraining } = await import('./draft');
-    const draft = draftFromTraining({
-      date: '2026-11-08', day: 'Push', deload: false, note: 'Schulter ok',
-      exercises: [{ id: 'E06', name: 'Multipresse', sets: [
-        { set: 1, kg: 42.5, reps: 8, failure: false, e1rm: 53.8, isPr: true },
-        { set: 3, kg: 42.5, reps: 6, failure: true, e1rm: 51, isPr: false },
-      ] }],
-    });
-    expect(draft.items).toEqual([{ id: 'E06', name: 'Multipresse', kg: '42,5', reps: ['8', '', '6', ''], failure: true }]);
-    expect(draft.replaces).toEqual({ date: '2026-11-08', day: 'Push' });
-    expect(draft.touched).toBe(true);
-    const result = buildPayload(draft);
-    expect('payload' in result && result.payload.replaces).toEqual({ date: '2026-11-08', day: 'Push' });
-  });
-});

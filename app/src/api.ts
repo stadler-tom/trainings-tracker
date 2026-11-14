@@ -100,7 +100,7 @@ const MESSAGES: Record<string, string> = {
   dev_url: 'Die Adresse endet auf /dev. Das ist die Test-Adresse des Editors; bitte die Web-App-URL auf /exec aus „Bereitstellungen verwalten“ eintragen.',
   not_configured: 'Web-API-Adresse und Schlüssel fehlen. Bitte in den Einstellungen eintragen.',
   invalid_response: 'Das Web-API hat unerwartet geantwortet. Ist die Adresse richtig?',
-  already_saved: 'Dieser Trainingstag ist für das Datum schon gespeichert. Zum Ändern im Verlauf auf das Training tippen und „Bearbeiten“ wählen.',
+  already_saved: 'Dieser Trainingstag ist für das Datum schon gespeichert. Korrekturen bitte direkt im Sheet im Log.',
   unknown_training: 'Dieses Training gibt es im Sheet nicht mehr. Wurde es dort geändert oder gelöscht?',
   invalid_body: 'Bitte Gewicht zwischen 30 und 250 kg bzw. Bauchumfang zwischen 40 und 250 cm eintragen.',
   missing_weight: 'Bei einer Übung fehlt das Gewicht',
@@ -199,7 +199,6 @@ export interface SavePayload {
   deload: boolean;
   note: string;
   exercises: { id: string; kg: number | null; reps: (number | null)[]; failure: boolean }[];
-  replaces?: { date: string; day: string };      // correction of a saved training (API 1.6.0+)
 }
 
 export const saveTraining = (settings: Settings, payload: SavePayload) =>
@@ -213,9 +212,6 @@ export const updateExerciseNote = (settings: Settings, id: string, note: string)
 
 export const getTraining = (settings: Settings, date: string, day: string) =>
   call<TrainingDetail>(settings, 'getTraining', { date, day });
-
-export const deleteTraining = (settings: Settings, date: string, day: string) =>
-  call<{ deletedSets: number; state: State }>(settings, 'deleteTraining', { date, day });
 
 export const saveBody = (settings: Settings, date: string, weight: number | null, waist: number | null) =>
   call<{ body: BodyEntry[] }>(settings, 'saveBody', { date, weight, waist });

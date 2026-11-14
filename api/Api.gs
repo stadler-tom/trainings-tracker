@@ -13,7 +13,7 @@
  * Error codes are English; the app shows German messages.
  */
 
-const API_VERSION = '1.6.0';
+const API_VERSION = '1.6.1';   // 1.6.1: no action removes anything from the log any more
 const APP_URL = 'https://stadler-tom.github.io/trainings-tracker/';
 const KEY_PROPERTY = 'API_KEY';
 const RECENT_DATES = 4;                 // trainings per day sent for the "today" hint
@@ -64,7 +64,6 @@ function handle_(action, key, payload) {
       case 'updateDaySlots': return withLock_(function () { return updateDaySlots_(payload); });
       case 'updateExerciseNote': return withLock_(function () { return updateExerciseNote_(payload); });
       case 'getTraining': return getTraining_(payload);
-      case 'deleteTraining': return withLock_(function () { return deleteTraining_(payload); });
       case 'saveBody': return withLock_(function () { return saveBody_(payload); });
       default: return { ok: false, error: 'unknown_action' };
     }
@@ -263,8 +262,8 @@ function bodyWeightLookup_(body) {
 /**
  * Saves one training from the app (section 4.3). Payload:
  * { clientId, day, date: 'yyyy-MM-dd', deload, note,
- *   exercises: [{ id, kg, reps: [n|null, n|null, n|null, n|null], failure }],
- *   replaces: { date, day } }   // optional since 1.6.0: a corrected training replaces this one
+ *   exercises: [{ id, kg, reps: [n|null, n|null, n|null, n|null], failure }] }
+ * The log is append-only: the app never changes or removes saved rows (corrections only by hand in the sheet).
  */
 function saveTrainingFromApp_(p) {
   const ss = SpreadsheetApp.getActive();
@@ -303,22 +302,12 @@ function saveTrainingFromApp_(p) {
   if (!rows.length) return { ok: false, error: 'nothing_to_save' };
 
   // the log is read once and reused for the duplicate check, the info rows and the new state
-  let logRows = readLog_(ss);
-  const replacing = Boolean(p.replaces && p.replaces.date && p.replaces.day);
-  if (replacing) {
-    const kept = logRows.filter(function (r) { return !isTrainingRow_(r, p.replaces.date, p.replaces.day, tz); });
-    if (kept.length === logRows.length) return { ok: false, error: 'unknown_training' };
-    logRows = kept;
-  }
+  const logRows = readLog_(ss);
   const dateText = Utilities.formatDate(date, tz, 'yyyy-MM-dd');
   if (logRows.some(function (r) { return isTrainingRow_(r, dateText, day, tz); })) return { ok: false, error: 'already_saved' };
 
   const allRows = logRows.concat(rows);
-  if (replacing) {
-    writeLog_(ss, allRows);
-  } else {
-    ss.getSheetByName(SHEET.log).getRange(logRows.length + 2, 1, rows.length, LOG_HEADER.length).setValues(rows);
-  }
+  ss.getSheetByName(SHEET.log).getRange(logRows.length + 2, 1, rows.length, LOG_HEADER.length).setValues(rows);
   rememberClientId_(p.clientId);
   refreshAllInfo_(ss, loadContext_(ss, allRows), daySheets);   // keeps the info rows of the sheet input in sync
   // state (since 1.4.0): the app needs no second request to show the new "zuletzt" and targets
@@ -412,20 +401,6 @@ function getTraining_(p) {
     });
   }
   return { ok: true, data: result };
-}
-
-/** Deletes one training from the log (since 1.6.0). Payload: { date, day } */
-function deleteTraining_(p) {
-  const ss = SpreadsheetApp.getActive();
-  const tz = ss.getSpreadsheetTimeZone();
-  const logRows = readLog_(ss);
-  const kept = logRows.filter(function (r) { return !isTrainingRow_(r, p.date, p.day, tz); });
-  if (kept.length === logRows.length) return { ok: false, error: 'unknown_training' };
-  writeLog_(ss, kept);
-  const daySheets = daySheets_(ss);
-  refreshAllInfo_(ss, loadContext_(ss, kept), daySheets);
-  return { ok: true, data: { deletedSets: logRows.length - kept.length,
-    state: buildState_(ss, daySheets, readExerciseRows_(ss), kept, readExtras_(ss)) } };
 }
 
 /**
@@ -554,12 +529,6 @@ function isTrainingRow_(r, dateKey, day, tz) {
     Utilities.formatDate(r[LOG.date], tz, 'yyyy-MM-dd') === String(dateKey);
 }
 
-/** Writes the whole log again (after a correction or a deletion); formats of the sheet stay. */
-function writeLog_(ss, rows) {
-  const log = ss.getSheetByName(SHEET.log);
-  if (log.getLastRow() > 1) log.getRange(2, 1, log.getLastRow() - 1, LOG_HEADER.length).clearContent();
-  if (rows.length) log.getRange(2, 1, rows.length, LOG_HEADER.length).setValues(rows);
-}
 
 function wasClientIdSaved_(clientId) {
   const stored = PropertiesService.getScriptProperties().getProperty(CLIENT_IDS_PROPERTY);

@@ -1,12 +1,11 @@
 <script setup lang="ts">
 // Summary after saving or from the history: total volume, PRs, sets with e1RM and a fun comparison.
-// From the history it also offers correcting and deleting the training (API 1.6.0+).
 import { computed } from 'vue';
 import { formatNumber } from '../training';
 import { funComparison, type Summary } from '../summary';
 
-const props = defineProps<{ summary: Summary; actions?: boolean; busy?: boolean }>();
-const emit = defineEmits<{ close: []; edit: []; remove: [] }>();
+const props = defineProps<{ summary: Summary; closeLabel?: string }>();
+const emit = defineEmits<{ close: [] }>();
 
 const dateText = computed(() => {
   const [year, month, day] = props.summary.date.split('-').map(Number);
@@ -44,11 +43,7 @@ const fun = funComparison(props.summary.volume);   // picked once per summary
 
       <p v-if="summary.note" class="note">📝 {{ summary.note }}</p>
       <p class="fun">{{ fun }}</p>
-      <div v-if="actions" class="actions">
-        <button :disabled="busy" @click="emit('edit')">✏️ Bearbeiten</button>
-        <button class="danger" :disabled="busy" @click="emit('remove')">{{ busy ? 'Lösche …' : '🗑 Löschen' }}</button>
-      </div>
-      <button class="primary big done" @click="emit('close')">{{ actions ? 'Schließen' : 'Fertig' }}</button>
+      <button class="primary big done" @click="emit('close')">{{ closeLabel ?? 'Fertig' }}</button>
     </section>
   </div>
 </template>
@@ -93,6 +88,5 @@ const fun = funComparison(props.summary.volume);   // picked once per summary
 }
 .done { width: 100%; text-align: center; }
 .note { margin: 16px 0 0; color: var(--muted); }
-.actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
-.danger { color: var(--accent); }
+
 </style>

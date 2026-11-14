@@ -5,15 +5,14 @@ import TrainingView from './views/TrainingView.vue';
 import SettingsView from './views/SettingsView.vue';
 import HistoryView from './views/HistoryView.vue';
 import BodyView from './views/BodyView.vue';
-import { errorMessage, getState, type State, type TrainingDetail } from './api';
-import { draftFromTraining, loadDraft, newDraft, removeDraft, saveDraft, type Draft } from './draft';
+import PullToRefresh from './views/PullToRefresh.vue';
+import { errorMessage, getState, type State } from './api';
+import { loadDraft, newDraft, removeDraft, saveDraft, type Draft } from './draft';
 import { loadCachedState, loadSettings, parseSetupLink, saveCachedState, saveSettings, type Settings } from './storage';
 
 // A handful of screens: a simple switch is enough, no router needed.
 type Screen = 'start' | 'training' | 'settings' | 'history' | 'body';
 const screen = ref<Screen>('start');
-// where "back" leads from the training: the history when a saved training is corrected
-const trainingReturn = ref<Screen>('start');
 const settings = ref<Settings>(loadSettings());
 // the last known state is shown at once; reload() replaces it with the fresh one
 const state = ref<State | null>(loadCachedState<State>(settings.value.apiUrl));
@@ -64,18 +63,6 @@ function openDay(day: string) {
       ? newDraft(state.value, day)
       : newDraftPlaceholder(day);
   }
-  trainingReturn.value = running?.replaces && running.day === day && running.touched ? 'history' : 'start';
-  screen.value = 'training';
-}
-
-/** Opens a saved training from the history for correction (API 1.6.0+). */
-function editTraining(detail: TrainingDetail) {
-  const running = draft.value;
-  if (running?.touched && !confirm(`Das ungespeicherte Training „${running.day}“ verwerfen und das Training vom ${detail.date.split('-').reverse().join('.')} bearbeiten?`)) {
-    return;
-  }
-  draft.value = draftFromTraining(detail);
-  trainingReturn.value = 'history';
   screen.value = 'training';
 }
 
@@ -86,13 +73,7 @@ function newDraftPlaceholder(day: string): Draft {
 
 function discardTraining() {
   draft.value = null;
-  screen.value = trainingReturn.value;
-  trainingReturn.value = 'start';
-}
-
-function leaveTraining() {
-  screen.value = trainingReturn.value;
-  trainingReturn.value = 'start';
+  screen.value = 'start';
 }
 
 function applySettings(updated: Settings) {
@@ -112,15 +93,14 @@ onMounted(() => {
     return;
   }
   // an unsaved training continues right away (section 4.1)
-  if (draft.value?.touched) {
-    screen.value = 'training';
-    if (draft.value.replaces) trainingReturn.value = 'history';
-  }
+  if (draft.value?.touched) screen.value = 'training';
   reload();
 });
 </script>
 
 <template>
+  <!-- not during a training: there a pull while scrolling the inputs would reload by accident -->
+  <PullToRefresh :enabled="screen !== 'training'" />
   <StartView
     v-if="screen === 'start'"
     :configured="Boolean(settings.apiUrl && settings.apiKey)"
@@ -142,7 +122,7 @@ onMounted(() => {
     :load-error="loadError"
     :reload="reload"
     :apply-state="applyState"
-    @back="leaveTraining"
+    @back="screen = 'start'"
     @discard="discardTraining"
     @saved="draft = $event"
   />
@@ -150,9 +130,7 @@ onMounted(() => {
     v-else-if="screen === 'history'"
     :state="state"
     :settings="settings"
-    :apply-state="applyState"
     @back="screen = 'start'"
-    @edit="editTraining"
   />
   <BodyView
     v-else-if="screen === 'body'"

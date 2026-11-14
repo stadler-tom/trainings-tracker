@@ -1,8 +1,8 @@
 <script setup lang="ts">
 // Training history (API 1.6.0+): every saved training, newest first, grouped by month.
-// A tap loads the training and shows its summary with "Bearbeiten" and "Löschen".
+// A tap loads the training and shows its summary. Read only: the log is never changed from the app.
 import { computed, ref } from 'vue';
-import { deleteTraining, errorMessage, getTraining, type State, type TrainingDetail, type TrainingOverview } from '../api';
+import { errorMessage, getTraining, type State, type TrainingOverview } from '../api';
 import type { Settings } from '../storage';
 import { summaryFromDetail, type Summary } from '../summary';
 import LoadingSpinner from './LoadingSpinner.vue';
@@ -11,9 +11,8 @@ import SummaryOverlay from './SummaryOverlay.vue';
 const props = defineProps<{
   state: State | null;
   settings: Settings;
-  applyState: (state: State) => void;
 }>();
-const emit = defineEmits<{ back: []; edit: [detail: TrainingDetail] }>();
+const emit = defineEmits<{ back: [] }>();
 
 const months = computed(() => {
   const groups: { label: string; trainings: TrainingOverview[] }[] = [];
@@ -33,9 +32,7 @@ function dateText(iso: string): string {
 }
 
 const opening = ref<string | null>(null);      // key of the training being loaded
-const detail = ref<TrainingDetail | null>(null);
 const summary = ref<Summary | null>(null);
-const deleting = ref(false);
 const message = ref('');
 
 async function open(training: TrainingOverview) {
@@ -44,8 +41,7 @@ async function open(training: TrainingOverview) {
   opening.value = key;
   message.value = '';
   try {
-    detail.value = await getTraining(props.settings, training.date, training.day);
-    summary.value = summaryFromDetail(detail.value);
+    summary.value = summaryFromDetail(await getTraining(props.settings, training.date, training.day));
   } catch (error) {
     message.value = errorMessage(error);
   } finally {
@@ -55,27 +51,6 @@ async function open(training: TrainingOverview) {
 
 function close() {
   summary.value = null;
-  detail.value = null;
-}
-
-async function remove() {
-  const training = detail.value;
-  if (!training || !confirm(`Training „${training.day}“ vom ${dateText(training.date)} wirklich löschen?`)) return;
-  deleting.value = true;
-  try {
-    const result = await deleteTraining(props.settings, training.date, training.day);
-    props.applyState(result.state);
-    close();
-  } catch (error) {
-    close();
-    message.value = errorMessage(error);
-  } finally {
-    deleting.value = false;
-  }
-}
-
-function edit() {
-  if (detail.value) emit('edit', detail.value);
 }
 </script>
 
@@ -111,7 +86,7 @@ function edit() {
       </button>
     </section>
 
-    <SummaryOverlay v-if="summary" :summary="summary" actions :busy="deleting" @close="close" @edit="edit" @remove="remove" />
+    <SummaryOverlay v-if="summary" :summary="summary" close-label="Schließen" @close="close" />
   </main>
 </template>
 

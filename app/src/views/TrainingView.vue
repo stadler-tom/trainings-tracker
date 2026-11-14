@@ -87,12 +87,10 @@ function showMessage(text: string, isError: boolean) {
 }
 
 const bodyWeight = computed(() => latestBodyWeight(props.state?.body));
-const editing = computed(() => Boolean(props.draft.replaces));
 
 // ----- exercise selection: written to the day sheet right away (section 4.2) -----
 let slotQueue = Promise.resolve();
 function syncSlots() {
-  if (editing.value) return;               // correcting an old training does not change the day's plan
   const ids = props.draft.items.map((i) => i.id);
   const day = props.state?.days.find((d) => d.name === props.draft.day);
   if (day) day.exerciseIds = [...ids];
@@ -188,15 +186,13 @@ async function save() {
     fresh = props.state;
   }
   saving.value = false;
-  if (fresh) emit('saved', editing.value ? newDraft(fresh, props.draft.day) : newDraft(fresh, props.draft.day, props.draft.date));
+  if (fresh) emit('saved', newDraft(fresh, props.draft.day, props.draft.date));
   showSaveMessage(`Training gespeichert: ${result.sets} ${result.sets === 1 ? 'Satz' : 'Sätze'}.`, false);
   summary.value = finished;
 }
 
 function discard() {
-  const question = editing.value ? 'Bearbeitung abbrechen? Das gespeicherte Training bleibt unverändert.'
-    : 'Alle Eingaben dieses Trainings verwerfen?';
-  if (props.draft.touched && !confirm(question)) return;
+  if (props.draft.touched && !confirm('Alle Eingaben dieses Trainings verwerfen?')) return;
   emit('discard');
 }
 </script>
@@ -204,8 +200,8 @@ function discard() {
 <template>
   <main class="screen">
     <header class="bar">
-      <button class="ghost" @click="emit('back')">{{ editing ? '‹ Verlauf' : '‹ Start' }}</button>
-      <h1>{{ draft.day }}<span v-if="editing" class="muted editing"> bearbeiten</span></h1>
+      <button class="ghost" @click="emit('back')">‹ Start</button>
+      <h1>{{ draft.day }}</h1>
     </header>
 
     <p v-if="message" class="message" :class="messageIsError ? 'error' : 'success'" role="status">{{ message }}</p>
@@ -263,9 +259,9 @@ function discard() {
       <button v-if="invalid" class="link" @click="goToInvalid">Zur Übung</button>
     </p>
     <button class="primary big save" :disabled="saving" @click="save">
-      {{ saving ? 'Speichere …' : editing ? 'Änderungen speichern' : 'Training speichern' }}
+      {{ saving ? 'Speichere …' : 'Training speichern' }}
     </button>
-    <button class="ghost" @click="discard">{{ editing ? 'Bearbeitung abbrechen' : 'Training verwerfen' }}</button>
+    <button class="ghost" @click="discard">Training verwerfen</button>
 
     <SummaryOverlay v-if="summary" :summary="summary" @close="summary = null; emit('back')" />
 
@@ -288,7 +284,6 @@ function discard() {
 .check input { width: 24px; height: 24px; min-height: 0; }
 select { font: inherit; font-size: 16px; min-height: 44px; border-radius: 10px; padding: 0 8px; color: var(--text); background: var(--bg); }
 .save { text-align: center; }
-.editing { font-weight: 400; font-size: 1rem; }
 .link { display: block; margin-top: 6px; padding: 0; min-height: 44px; background: none; border: none;
   color: inherit; font: inherit; font-weight: 600; text-decoration: underline; text-align: left; }
 </style>
