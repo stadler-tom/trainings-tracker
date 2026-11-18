@@ -3,7 +3,7 @@ import { computed } from 'vue';
 import { isOlderVersion, MIN_API_VERSION, UPDATE_GUIDE_URL, type State } from '../api';
 import { formatIsoDate, localDate } from '../format';
 import { deloadStatus } from '../deload';
-import { daysDoneToday, daysForToday } from '../training';
+import { dayLabel, daysDoneToday, daysForToday } from '../training';
 import LoadingSpinner from './LoadingSpinner.vue';
 
 const props = defineProps<{
@@ -16,7 +16,7 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ openDay: [day: string]; openSettings: []; openHistory: []; openBody: []; reload: [] }>();
 
-// hint only: the day usually trained on today's weekday gets a frame (derived from the log)
+// the day planned for today's weekday gets a frame (weekdays from the day sheet, else derived from the log)
 const todayDays = computed(() => (props.state ? daysForToday(props.state.days, localDate(props.today)) : []));
 // a day with a training saved today is shown as done (instead of the "today" hint)
 const doneDays = computed(() => (props.state ? daysDoneToday(props.state.days, props.today) : []));
@@ -90,7 +90,7 @@ const STAGGER_MS = 80;
         @click="emit('openDay', day.name)"
       >
         <span class="name">
-          {{ day.name }}
+          {{ dayLabel(day) }}
           <span v-if="doneDays.includes(day.name)" class="badge done-label">✓ Erledigt</span>
           <span v-else-if="todayDays.includes(day.name)" class="badge today-label">Heute</span>
         </span>

@@ -25,10 +25,11 @@ Die Schritte 1 bis 5 machst du am PC, Schritt 6 und 7 am iPhone.
 Jeder Trainingstag ist ein eigenes Tabellenblatt. Der Name des Reiters unten ist der Name in der App, und er steht nur dort.
 
 1. Den Reiter **Training A** umbenennen (Rechtsklick auf den Reiter → **Umbenennen**), zum Beispiel in `Push` oder `Ganzkörper A`.
-2. Für jeden weiteren Tag: Rechtsklick auf einen Tages-Reiter → **Duplizieren**, dann die Kopie umbenennen.
-3. Die Reihenfolge der Reiter (mit der Maus ziehen) ist die Reihenfolge der Knöpfe in der App.
+2. In **B2** den Wochentag wählen, an dem du diese Einheit trainierst. **B3** ist ein optionaler zweiter Wochentag. Beides darf leer bleiben.
+3. Für jeden weiteren Tag: Rechtsklick auf einen Tages-Reiter → **Duplizieren**, dann die Kopie umbenennen und den Wochentag anpassen.
+4. Die Reihenfolge der Reiter (mit der Maus ziehen) ist die Reihenfolge der Knöpfe in der App.
 
-Die Übungen pro Tag wählst du später bequem in der App aus.
+Die Übungen pro Tag wählst du hier ab Zeile 6 aus der Liste oder später bequem in der App. Daneben steht die Zahl der Sätze (1 bis 5, Standard 4).
 
 ## 3. Einrichtung ausführen
 
@@ -101,19 +102,21 @@ Wichtig: Den Link in den Einstellungen der App einfügen, nicht in Safari öffne
 <img src="bilder/app-training.png" alt="Training erfassen" width="260">
 
 - **Trainingstag antippen.** Beim ersten Mal ist der Tag leer: unten über **Übung hinzufügen** deine Übungen wählen. Die Auswahl und Reihenfolge (Pfeile ↑ ↓) bleibt für das nächste Training gespeichert.
+- **Knöpfe:** Hinter dem Namen stehen die Wochentage aus dem Sheet, z. B. „Push (Mo, Do)“. Der Tag für heute ist eingerahmt.
 - **Ziel heute** sagt dir Gewicht und Wiederholungen. Das Gewicht ist schon eingetragen; die grauen Zahlen in den Satzfeldern sind das Ziel.
 - **Satz eintragen:** Feld antippen, Zahl eingeben. Oder **+ / −** benutzen. Ein leeres Feld heißt: Satz nicht gemacht.
 - **Gerätenotiz** (z. B. „Sitz 4“) antippen und eintragen. Sie gilt für alle Trainingstage.
 - **Scheiben & Aufwärmen** zeigt bei Langhantel-Übungen, welche Scheiben auf jede Seite gehören, und schlägt Aufwärmsätze vor.
 - **1RM-Test (Maximalversuch):** Haken setzen, Gewicht eintragen. Der Versuch zählt mit 1 Wdh als getestetes 1RM und hat keinen Einfluss auf Ziel, Rekorde und Progression.
+- **Eingeschränkt (Schmerzen, Abbruch):** Haken setzen, wenn eine Übung nicht normal lief, optional mit Grund. Sie zählt dann nicht für Ziel, Rekorde und Progression, aber beim Volumen.
 - **Training speichern** am Ende. Ein Tag kann pro Datum nur einmal gespeichert werden.
 - Schließt sich die App zwischendurch, sind beim nächsten Öffnen alle Eingaben noch da.
 
 ## Das Sheet
 
-- **Tagesblätter:** ein Blatt pro Trainingstag, der Reitername ist der Tagesname.
+- **Tagesblätter:** ein Blatt pro Trainingstag, der Reitername ist der Tagesname. In A1 steht `Trainingstag`, das macht das Blatt zum Tagesblatt. B2 und B3: Wochentage. Ab Zeile 6: Übung und Sätze (1 bis 5). Trainings speicherst du nur in der App.
   - **Umbenennen:** nur den Reiter umbenennen. Beim nächsten Öffnen der App steht der neue Name überall, auch bei allen alten Einträgen im Log.
-  - **Neuer Tag:** Tagesblatt duplizieren und umbenennen. **Tag entfernen:** Reiter löschen; die alten Einträge im Log bleiben.
+  - **Neuer Tag:** Tagesblatt duplizieren und umbenennen. Oder leeres Blatt, in A1 `Trainingstag`, dann setupApi ausführen. **Tag entfernen:** Reiter löschen; die alten Einträge im Log bleiben.
   - Änderungen am Sheet sieht die App beim nächsten Öffnen. Ist sie noch im Hintergrund offen, in der App-Übersicht nach oben wischen und neu öffnen.
 - **Übungen:** Übungsstamm mit Beispielübungen. Neue Übung = neue Zeile mit neuer ID (z. B. `E28`). Übungen nie löschen, sondern **Aktiv** auf `nein` setzen.
   - Den Namen einer Übung änderst du nur hier, Tagesblätter und App übernehmen ihn. Die **ID** nie ändern: Über sie hängen Verlauf und Tagesauswahl an der Übung.
@@ -121,7 +124,8 @@ Wichtig: Den Link in den Einstellungen der App einfügen, nicht in Safari öffne
   - **Stangengewicht kg:** aktiviert den Scheibenrechner, z. B. 20 bei der Langhantel, 0 bei der Multipresse (nur Scheiben). Leer = kein Scheibenrechner.
 - **Muskelgruppen:** jede Gruppe genau einmal, mit **Sätze/Woche Min** und **Max** als Ziel für die Seite Volumen. Im Blatt Übungen wählst du die Gruppe aus einer Liste.
   - **Umbenennen:** nur hier. Die Übungen ziehen automatisch nach. **Neue Gruppe:** neue Zeile, die (ausgeblendete) Spalte ID bleibt leer.
-- **Log:** alle gespeicherten Sätze. Korrekturen direkt hier. Spalte **1RM-Test**: 1 = echter Maximalversuch.
+- **Log:** alle gespeicherten Sätze. Korrekturen direkt hier. Spalte **1RM-Test**: 1 = echter Maximalversuch. Spalte **Eingeschränkt**: Grund oder „ja“, leer = normal.
+- **Einstellungen:** u. a. **Gewicht pro Satz** (ja/nein). Mit „ja“ hat jeder Satz in der App ein eigenes Gewichtsfeld, und das Ziel gilt pro Satz.
 - **Körper:** Gewicht und Bauchumfang trägst du direkt im Sheet ein (Google-Sheets-App).
 
 ## Auswertung

@@ -71,13 +71,52 @@ export function targetToday(exercise: Exercise, history: ExerciseHistory | undef
   return { kind: 'same', kg, reps: goal, sets: null, text: `= ${formatNumber(kg)} kg · ${goal}+` };
 }
 
-/** "zuletzt 4.11. 40 × 8/8/8" or null if there is no regular session yet. */
+export interface SetTarget {
+  kg: number | null;               // weight to prefill for this set
+  reps: number | null;             // reps goal (placeholder)
+  up: boolean;                     // weight raised against the same set last time
+}
+
+/**
+ * Mode "Gewicht pro Satz" (requirements spec "PC-Auswertung", weight per set): double progression per set.
+ * Every set is compared only with the same set of the last regular session; if it reached reps max,
+ * its weight goes up by the increment, otherwise it stays and the goal is one rep more.
+ * A set the last session did not have takes the values of its last set.
+ */
+export function targetPerSet(exercise: Exercise, history: ExerciseHistory | undefined, setCount: number, isDeload: boolean): SetTarget[] {
+  const last = history?.lastSession;
+  const sets = last ? [...last.sets].sort((a, b) => a.set - b.set) : [];
+  return Array.from({ length: setCount }, (_, i) => {
+    const source = sets[Math.min(i, sets.length - 1)];
+    if (!source) return { kg: exercise.weightType === 'Zusatzgewicht' ? 0 : null, reps: exercise.repsMin || null, up: false };
+    const raise = !isDeload && exercise.type !== 'Aufwärmen' && exercise.increment > 0 && source.reps >= exercise.repsMax;
+    if (raise) return { kg: source.kg + exercise.increment, reps: exercise.repsMin, up: true };
+    return { kg: source.kg, reps: isDeload ? source.reps : Math.min(source.reps + 1, exercise.repsMax), up: false };
+  });
+}
+
+/** "↑ Satz 1: 82,5 kg · Satz 2–3: 80 kg" – sets with the same weight in a row are grouped. */
+export function perSetText(targets: SetTarget[]): string {
+  if (!targets.length || targets.every((t) => t.kg === null)) return '';
+  const parts: string[] = [];
+  for (let i = 0; i < targets.length;) {
+    let j = i;
+    while (j + 1 < targets.length && targets[j + 1].kg === targets[i].kg) j++;
+    const label = i === j ? `Satz ${i + 1}` : `Satz ${i + 1}–${j + 1}`;
+    parts.push(`${label}: ${targets[i].kg === null ? '–' : `${formatNumber(targets[i].kg as number)} kg`}`);
+    i = j + 1;
+  }
+  return (targets.some((t) => t.up) ? '↑ ' : '') + parts.join(' · ');
+}
+
+/** "zuletzt 4.11. 40 × 8/8/8" (or "80/77,5 × 8/8" with different weights), null without a regular session. */
 export function lastText(history: ExerciseHistory | undefined): string | null {
   const last = history?.lastSession;
   if (!last || last.sets.length === 0) return null;
   const sets = [...last.sets].sort((a, b) => a.set - b.set);
   const [, month, day] = last.date.split('-').map(Number);
-  return `zuletzt ${day}.${month}. ${formatNumber(sets[0].kg)} × ${sets.map((s) => s.reps).join('/')}`;
+  const weights = sets.every((s) => s.kg === sets[0].kg) ? formatNumber(sets[0].kg) : sets.map((s) => formatNumber(s.kg)).join('/');
+  return `zuletzt ${day}.${month}. ${weights} × ${sets.map((s) => s.reps).join('/')}`;
 }
 
 export interface RecordResult {
@@ -207,9 +246,22 @@ export function usualWeekday(day: Day): number | null {
   return best;
 }
 
-/** Names of the days usually trained on the weekday of the given date. */
+const WEEKDAY_SHORT = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];   // ISO order, Monday = 1
+
+/**
+ * Names of the days trained on the weekday of the given date: the weekdays chosen in the day sheet
+ * (API 1.8.0+); a day without a chosen weekday falls back to the usual weekday from the log.
+ */
 export function daysForToday(days: Day[], today = new Date()): string[] {
-  return days.filter((day) => usualWeekday(day) === today.getDay()).map((day) => day.name);
+  const iso = ((today.getDay() + 6) % 7) + 1;
+  return days.filter((day) => (day.weekdays?.length ? day.weekdays.includes(iso) : usualWeekday(day) === today.getDay()))
+    .map((day) => day.name);
+}
+
+/** "Push (Mo, Mi)" – the weekdays chosen in the day sheet; just the name without any. */
+export function dayLabel(day: Day): string {
+  const names = (day.weekdays ?? []).filter((n) => n >= 1 && n <= 7).map((n) => WEEKDAY_SHORT[n - 1]);
+  return names.length ? `${day.name} (${names.join(', ')})` : day.name;
 }
 
 /** Names of the days with a training saved for the given date (the newest log entry is today). */

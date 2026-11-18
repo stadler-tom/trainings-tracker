@@ -3,7 +3,7 @@
 import { computed, ref } from 'vue';
 import { formatIsoDate, todayIso } from '../format';
 import { formatNumber } from '../training';
-import { nextTraining, oneDecimal, rangeLabel, rangeStart, signed, STATUS_TEXT, type AnalysisData, type ChartRange, type ExerciseStats } from './analysis';
+import { nextTraining, oneDecimal, perSetCount, rangeLabel, sessionText, rangeStart, signed, STATUS_TEXT, type AnalysisData, type ChartRange, type ExerciseStats } from './analysis';
 import RangeButtons from './RangeButtons.vue';
 import LineChart, { type ChartMark } from './LineChart.vue';
 
@@ -68,15 +68,17 @@ const view = computed(() => {
     changeClass: change === null || Math.abs(change) < 0.05 ? '' : change > 0 ? 'a-good' : 'a-bad',
     changePct: change !== null && first ? `${signed((change / first.e1rm) * 100)} % seit ${formatIsoDate(first.date)}` : 'zu wenig Einheiten im Zeitraum',
     changeLabel: `Veränderung (${rangeLabel(range.value)})`,
-    last: last ? `${formatNumber(last.kg)} kg × ${last.reps.join('/')}` : '–',
+    last: last ? sessionText(last) : '–',
     lastDate: last ? formatIsoDate(last.date) : '',
-    next: nextTraining(s),
+    next: nextTraining(s, perSetCount(props.data, s)),
   };
 });
 
 const chartMarks = computed<ChartMark[]>(() => [
   ...shown.value.filter((x) => x.isRecord).map((x) => ({ date: x.date, value: x.e1rm, shape: 'circle' as const, color: 'var(--a-record)' })),
   ...shownTests.value.map((t) => ({ date: t.date, value: t.kg, shape: 'square' as const, color: 'var(--a-text)' })),
+  ...(current.value?.sessions ?? []).filter((x) => x.limited !== null && x.date >= from.value)
+    .map((x) => ({ date: x.date, value: x.e1rm, shape: 'ring' as const, color: 'var(--a-muted)' })),
 ]);
 
 // volume bars of the sessions in the volume range (deload included), the newest one highlighted
@@ -96,7 +98,8 @@ const rows = computed(() => {
   const s = current.value;
   if (!s) return [];
   const sessions = s.sessions.map((x) => ({
-    date: x.date, kg: formatNumber(x.kg), sets: x.reps.join(' / ') + (x.deload ? ' (Deload)' : ''),
+    date: x.date, kg: x.kgs.every((kg) => kg === x.kg) ? formatNumber(x.kg) : x.kgs.map((kg) => formatNumber(kg)).join(' / '),
+    sets: x.reps.join(' / ') + (x.deload ? ' (Deload)' : '') + (x.limited !== null ? ` (eingeschränkt${x.limited ? `: ${x.limited}` : ''})` : ''),
     e1rm: oneDecimal(x.e1rm), volume: `${Math.round(x.volume).toLocaleString('de-DE')} kg`, strong: x.isRecord, test: false,
   }));
   const tests = s.tests.map((t) => ({
@@ -159,6 +162,7 @@ const rows = computed(() => {
         <span><span style="width: 18px; height: 3px; background: var(--a-chart); display: inline-block"></span>e1RM je Einheit</span>
         <span><span class="a-dot" style="width: 10px; height: 10px; background: var(--a-record)"></span>neuer Rekord</span>
         <span><span style="width: 10px; height: 10px; background: var(--a-text); display: inline-block"></span>1RM-Test (gehoben)</span>
+        <span><span class="a-dot" style="width: 10px; height: 10px; border: 2px solid var(--a-muted); background: var(--a-surface)"></span>eingeschränkt (nicht in der Linie)</span>
       </div>
       <LineChart
         :lines="[{ points: shown.map((x) => ({ date: x.date, value: x.e1rm })), color: 'var(--a-chart)', dots: true }]"

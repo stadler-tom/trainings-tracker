@@ -3,7 +3,7 @@
 import { computed, ref } from 'vue';
 import { addDays, formatIsoDate, todayIso } from '../format';
 import { formatNumber } from '../training';
-import { e1rmChangeSince, nextTraining, oneDecimal, signed, STATUS_TEXT, type AnalysisData, type ExerciseStats } from './analysis';
+import { e1rmChangeSince, nextTraining, perSetCount, sessionText, oneDecimal, signed, STATUS_TEXT, type AnalysisData, type ExerciseStats } from './analysis';
 
 const props = defineProps<{ data: AnalysisData; stats: Map<string, ExerciseStats> }>();
 const emit = defineEmits<{ open: [id: string] }>();
@@ -29,15 +29,16 @@ function rowOf(s: ExerciseStats): Row {
   const spark = tail.length > 1
     ? tail.map((v, i) => `${((i * 120) / (tail.length - 1)).toFixed(1)},${(28 - (24 * (v - lo)) / Math.max(hi - lo, 0.1)).toFixed(1)}`).join(' ')
     : '';
-  const next = nextTraining(s);
+  const setCount = perSetCount(props.data, s);
+  const next = nextTraining(s, setCount);
   const inc = s.exercise.increment;
-  const nextText = s.status === 'jump' || !last || inc <= 0 || next.kg.includes('(')
+  const nextText = setCount || s.status === 'jump' || !last || inc <= 0 || next.kg.includes('(')
     ? next.kg
     : `${next.kg} · ab ${s.exercise.repsMax} Wdh in Satz 1 → ${formatNumber(last.kg + inc)} kg`;
   return {
     id: s.exercise.id, name: s.exercise.name, days: daysOf(s.exercise.id).join(', ') || '–',
     lastDate: last ? formatIsoDate(last.date).slice(0, 6) : '–',
-    lastValues: last ? `${formatNumber(last.kg)} kg × ${last.reps.join('/')}` : '–',
+    lastValues: last ? sessionText(last) : '–',
     e1rm: last ? oneDecimal(last.e1rm) : '–',
     delta: change === null ? '–' : `${signed(change)} kg`,
     deltaClass: change === null || Math.abs(change) < 0.05 ? '' : change > 0 ? 'a-good' : 'a-bad',

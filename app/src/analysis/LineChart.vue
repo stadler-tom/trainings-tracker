@@ -5,7 +5,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { formatIsoDate } from '../format';
 
 export interface ChartPoint { date: string; value: number }
-export interface ChartMark extends ChartPoint { shape: 'circle' | 'square'; color: string; size?: number }
+export interface ChartMark extends ChartPoint { shape: 'circle' | 'square' | 'ring'; color: string; size?: number }
 
 const props = defineProps<{
   lines: { points: ChartPoint[]; color: string; dots?: boolean }[];
@@ -75,6 +75,7 @@ const chart = computed(() => {
       </g>
       <template v-for="m in chart.marks" :key="`${m.date}-${m.cx}-${m.cy}-${m.shape}`">
         <circle v-if="m.shape === 'circle'" :cx="m.cx" :cy="m.cy" :r="m.r" :fill="m.color" />
+        <circle v-else-if="m.shape === 'ring'" :cx="m.cx" :cy="m.cy" :r="m.r" fill="var(--a-surface)" :stroke="m.color" stroke-width="2" />
         <rect v-else :x="m.cx - m.r" :y="m.cy - m.r" :width="2 * m.r" :height="2 * m.r" :fill="m.color" />
       </template>
       <text :x="X0" y="272" font-size="12" fill="var(--a-muted)">{{ chart.xLabels[0] }}</text>

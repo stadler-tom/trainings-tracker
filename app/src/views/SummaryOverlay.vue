@@ -32,6 +32,9 @@ const fun = funComparison(props.summary.volume);   // picked once per summary
           <strong>{{ exercise.name }}</strong>
           <strong>1RM</strong>
         </div>
+        <p v-if="exercise.limited !== undefined" class="limited muted small">
+          ⚠️ Eingeschränkt{{ exercise.limited ? `: ${exercise.limited}` : '' }} · zählt nicht für Rekorde und Progression
+        </p>
         <div v-for="set in exercise.sets" :key="set.set" class="row" :class="{ pr: set.isPr }">
           <span><span class="nr">{{ set.set }}</span>{{ formatNumber(set.kg) }} kg × {{ set.reps }}<span v-if="set.test"> · 1RM-Test</span><span v-if="set.isPr"> 🏆</span></span>
           <span class="muted">{{ set.test ? formatNumber(set.kg) : Math.round(set.e1rm) }}</span>
@@ -46,6 +49,7 @@ const fun = funComparison(props.summary.volume);   // picked once per summary
 </template>
 
 <style scoped>
+.limited { margin: 2px 0 4px; }
 .backdrop {
   position: fixed;
   inset: 0;

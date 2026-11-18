@@ -27,7 +27,7 @@ Im Sheet **Datei → Kopie erstellen**. Die Kopie zum Beispiel „Sicherung TT-M
 2. Fragt Google nach Berechtigungen, wie bei der Einrichtung bestätigen (**Erweitert → Zu … wechseln → Zulassen**).
 3. Im Tab mit dem Sheet die Meldung lesen und mit **OK** schließen. Steht dort **ACHTUNG Muskelgruppen**, siehe Version 1.7.0 unten.
 
-setupApi ergänzt nur, was fehlt. Es ändert keine Daten und erzeugt keinen neuen Schlüssel.
+setupApi ergänzt nur, was fehlt. Es ändert keine Daten im Log und erzeugt keinen neuen Schlüssel. Einzige Ausnahme: Beim Update auf 1.8.0 baut es die Tagesblätter einmal um (siehe unten).
 
 ## 4. Neue Version bereitstellen, gleiche Adresse
 
@@ -41,6 +41,21 @@ setupApi ergänzt nur, was fehlt. Es ändert keine Daten und erzeugt keinen neue
 ## 5. Prüfen
 
 In der App **Einstellungen → Verbindung testen**. Die Meldung zeigt die neue Web-API-Version, der Hinweis „veraltet“ ist weg.
+
+## Neu in Version 1.8.0
+
+**Wichtig:** Die App braucht ab jetzt Script-Version 1.8.0. Bis du das Script aktualisiert hast, zeigt sie „Script im Sheet veraltet“ und speichert nicht. Das Update also vor dem nächsten Training machen.
+
+**Tagesblätter neu.** setupApi baut jedes Tagesblatt einmal in den neuen Aufbau um. Übungen und Reihenfolge bleiben, das Log wird nicht angefasst. Die Meldung nennt die umgebauten Blätter. Danach in jedem Tagesblatt prüfen:
+- **B2 Wochentag:** an welchem Tag du diese Einheit trainierst (Auswahlliste). **B3** ist ein optionaler zweiter Wochentag. Die App rahmt damit den heutigen Tag ein und zeigt ihn am Knopf, z. B. „Push (Mo, Do)“. Ohne Wochentag schätzt die App wie bisher.
+- **Sätze** (Spalte B neben jeder Übung): 1 bis 5. Nach dem Umbau stehen überall 4.
+- Die Spalten für kg und S1–S4 gibt es nicht mehr. Trainings speicherst du nur noch in der App.
+
+**Neuer Trainingstag:** ein Tagesblatt duplizieren und umbenennen. Oder ein leeres Blatt anlegen, in A1 `Trainingstag` schreiben und setupApi ausführen; es baut das Blatt fertig auf. Das Blatt **Trainingsplan** wird nicht mehr gebraucht. Du kannst es löschen.
+
+**Eingeschränkt.** Bei jeder Übung gibt es in der App den Haken „Eingeschränkt (Schmerzen, Abbruch)“ mit einem optionalen Grund. Das Log bekommt dafür die Spalte **Eingeschränkt** (Spalte N): der Grund oder „ja“. Eine eingeschränkte Einheit zählt nicht für Ziel, Rekorde und Progression, aber beim Volumen. In der PC-Auswertung ist sie ein hohler Punkt.
+
+**Gewicht pro Satz.** Im Blatt **Einstellungen** gibt es die Zeile **Gewicht pro Satz** (ja/nein, Standard nein). Mit „ja“ hat in der App jeder Satz ein eigenes Gewichtsfeld. Das Ziel gilt dann pro Satz: Ein Satz, der beim letzten Mal das Wdh-Maximum erreicht hat, steigt um den Gewichtssprung, die anderen bleiben.
 
 ## Neu in Version 1.7.0
 

@@ -17,6 +17,7 @@ export interface SummarySet {
 export interface SummaryExercise {
   name: string;
   sets: SummarySet[];
+  limited?: string;                // marked "Eingeschränkt": the reason, '' without one
 }
 
 export interface Summary {
@@ -37,31 +38,30 @@ export function buildSummary(payload: SavePayload, before: State | null): Summar
   for (const item of payload.exercises) {
     const exercise = before?.exercises.find((e) => e.id === item.id);
     const history = before?.history[item.id];
-    const kg = item.kg ?? 0;
     if (item.test) {                     // 1RM test: no volume, its own record rule
+      const kg = item.sets[0]?.kg ?? 0;
       const isPr = checkTestRecord(history, kg).isRecord;
       if (isPr) prCount++;
       exercises.push({ name: exercise?.name ?? item.id, sets: [{ set: 1, kg, reps: 1, e1rm: kg, isPr, test: true }] });
       continue;
     }
     // added weight (pull-ups): the 1RM includes the body weight, like the record check
-    const load = exercise?.weightType === 'Zusatzgewicht' && bodyWeight ? kg + bodyWeight : kg;
-    const sets: SummarySet[] = [];
-    item.reps.forEach((reps, index) => {
-      if (reps === null) return;
-      volume += kg * reps;
-      sets.push({ set: index + 1, kg, reps, e1rm: e1rm(load, reps), isPr: false });
+    const addedBody = exercise?.weightType === 'Zusatzgewicht' && bodyWeight ? bodyWeight : 0;
+    const sets: SummarySet[] = item.sets.map((set, index) => {
+      volume += set.kg * set.reps;
+      return { set: index + 1, kg: set.kg, reps: set.reps, e1rm: e1rm(set.kg + addedBody, set.reps), isPr: false };
     });
     if (!sets.length) continue;
-    // the record is the best set of the exercise if it beats all earlier trainings (same rule as in the card)
-    if (exercise) {
-      const best = [...sets].sort((a, b) => b.reps - a.reps)[0];
-      if (checkRecord(exercise, history, kg, best.reps, payload.deload, bodyWeight).isRecord) {
+    // the record is the best set of the exercise if it beats all earlier trainings (same rule as in the card);
+    // an exercise marked "Eingeschränkt" is never a record
+    if (exercise && item.limited == null) {
+      const best = [...sets].sort((a, b) => b.e1rm - a.e1rm || b.reps - a.reps)[0];
+      if (checkRecord(exercise, history, best.kg, best.reps, payload.deload, bodyWeight).isRecord) {
         best.isPr = true;
         prCount++;
       }
     }
-    exercises.push({ name: exercise?.name ?? item.id, sets });
+    exercises.push({ name: exercise?.name ?? item.id, sets, limited: item.limited ?? undefined });
   }
   return { day: payload.day, date: payload.date, deload: payload.deload, volume, prCount, exercises, note: payload.note };
 }
@@ -76,7 +76,7 @@ export function summaryFromDetail(detail: TrainingDetail): Summary {
       if (set.isPr) prCount++;
       return { set: set.set, kg: set.kg, reps: set.reps, e1rm: set.e1rm, isPr: set.isPr, test: set.test };
     });
-    return { name: exercise.name, sets };
+    return { name: exercise.name, sets, limited: exercise.limited };
   });
   return { day: detail.day, date: detail.date, deload: detail.deload, volume, prCount, exercises, note: detail.note };
 }

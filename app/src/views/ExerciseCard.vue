@@ -2,9 +2,9 @@
 import { computed, ref } from 'vue';
 import type { Exercise, ExerciseHistory } from '../api';
 import { signedKg } from '../body';
-import { parseKg, type DraftItem } from '../draft';
+import { parseKg, type DraftItem, type InvalidField } from '../draft';
 import { randomRecordPicture } from '../recordPictures';
-import { checkRecord, checkTestRecord, formatNumber, lastText, stepValue, targetToday } from '../training';
+import { checkRecord, checkTestRecord, formatNumber, lastText, perSetText, stepValue, targetPerSet, targetToday } from '../training';
 import RecordBanner from './RecordBanner.vue';
 
 const props = defineProps<{
@@ -14,34 +14,53 @@ const props = defineProps<{
   deload: boolean;
   isFirst: boolean;
   isLast: boolean;
-  invalidField?: 'kg' | number | null;   // input marked after a failed save
+  invalidField?: Exclude<InvalidField, 'date'> | null;   // input marked after a failed save
   bodyWeight?: number | null;            // newest weighing, for pull-up records (API 1.6.0+)
-  canTest?: boolean;                     // script can log 1RM tests (API 1.7.0+)
+  perSet?: boolean;                      // mode "Gewicht pro Satz": one weight field per set (API 1.8.0+)
 }>();
 const emit = defineEmits<{ changed: []; move: [direction: -1 | 1]; remove: []; saveNote: [note: string]; showTools: [] }>();
 
 const target = computed(() => (props.exercise ? targetToday(props.exercise, props.history, props.deload) : null));
+// mode "Gewicht pro Satz": every set has its own target (double progression per set)
+const setTargets = computed(() =>
+  props.perSet && props.exercise ? targetPerSet(props.exercise, props.history, props.item.reps.length, props.deload) : null);
+const targetText = computed(() => {
+  if (props.item.test || !target.value) return '';
+  if (setTargets.value && target.value.kind !== 'deload' && target.value.kind !== 'warmUp') return perSetText(setTargets.value);
+  return target.value.text;
+});
 const last = computed(() => lastText(props.history));
-const repsPlaceholder = computed(() => (target.value?.reps ? String(target.value.reps) : ''));
+function repsPlaceholder(index: number): string {
+  const goal = setTargets.value?.[index]?.reps ?? target.value?.reps;
+  return goal ? String(goal) : '';
+}
+const showWeightRow = computed(() => !props.perSet || props.item.test);
+/** Weight of one set: its own field in mode "Gewicht pro Satz", else the shared one. */
+function setKg(index: number): number | null {
+  return props.perSet ? parseKg(props.item.kgs?.[index] ?? '') : parseKg(props.item.kg);
+}
 const increment = computed(() => props.exercise?.increment ?? 0);
 const hasTools = computed(() =>
   props.exercise != null && (props.exercise.barWeight != null || props.exercise.type === 'Grundübung'));
 
 // best record among the entered sets (section 4.5)
 const record = computed(() => {
-  const kg = parseKg(props.item.kg);
-  if (!props.exercise || kg === null) return null;
+  if (!props.exercise || props.item.limited) return null;          // "Eingeschränkt": never a record
   if (props.item.test) {
+    const kg = parseKg(props.item.kg);
+    if (kg === null) return null;
     const result = checkTestRecord(props.history, kg);
-    return result.isRecord ? { text: result.text, kind: result.kind, reps: 1 } : null;
+    return result.isRecord ? { text: result.text, kind: result.kind, value: kg } : null;
   }
-  let best: { text: string; kind: string | null; reps: number } | null = null;
-  for (const text of props.item.reps) {
+  let best: { text: string; kind: string | null; value: number } | null = null;
+  props.item.reps.forEach((text, index) => {
     const reps = Number(text);
-    if (!Number.isInteger(reps) || reps <= 0) continue;
-    const result = checkRecord(props.exercise, props.history, kg, reps, props.deload, props.bodyWeight ?? null);
-    if (result.isRecord && (!best || reps > best.reps)) best = { text: result.text, kind: result.kind, reps };
-  }
+    const kg = setKg(index);
+    if (!Number.isInteger(reps) || reps <= 0 || kg === null) return;
+    const result = checkRecord(props.exercise as Exercise, props.history, kg, reps, props.deload, props.bodyWeight ?? null);
+    const value = (kg + 1) * (1 + reps / 30);                     // ranks the sets; +1 keeps 0 kg sets apart
+    if (result.isRecord && (!best || value > best.value)) best = { text: result.text, kind: result.kind, value };
+  });
   return best;
 });
 
@@ -79,7 +98,7 @@ function stepReps(index: number, direction: 1 | -1) {
   const current = props.item.reps[index].trim();
   if (current === '') {
     // empty field: + takes over the goal shown as placeholder, − one below it
-    const goal = target.value?.reps ?? 0;
+    const goal = Number(repsPlaceholder(index)) || 0;
     props.item.reps[index] = String(direction === 1 ? Math.max(goal, 1) : Math.max(goal - 1, 0));
   } else {
     props.item.reps[index] = String(stepValue(Number(current) || 0, 1, direction));
@@ -100,6 +119,12 @@ function toggleTest() {
     props.item.reps = props.item.reps.map(() => '');
     props.item.failure = false;
   }
+  emit('changed');
+}
+
+/** "Eingeschränkt" (pain, stopped early): the reason field appears; unticking clears it. */
+function toggleLimited() {
+  if (!props.item.limited) props.item.reason = '';
   emit('changed');
 }
 
@@ -150,10 +175,10 @@ function finishNote() {
       </svg>
       <span class="muted small">{{ curve.text }}</span>
     </div>
-    <p v-if="target && target.text && !item.test" class="target">Ziel heute: <strong>{{ target.text }}</strong></p>
+    <p v-if="targetText" class="target">Ziel heute: <strong>{{ targetText }}</strong></p>
     <p v-if="exercise && exercise.repsMax > 0" class="muted small">Wdh: {{ exercise.repsMin }}–{{ exercise.repsMax }}</p>
 
-    <div class="weight">
+    <div v-if="showWeightRow" class="weight">
       <button v-if="increment > 0" class="step" aria-label="Gewicht weniger" @click="stepKg(-1)">−</button>
       <label class="kg" :class="{ invalid: invalidField === 'kg' }">
         <input
@@ -176,9 +201,23 @@ function finishNote() {
       Zählt nicht für Ziel, Rekorde und Progression.
     </p>
 
-    <div v-else class="sets">
-      <div v-for="(_, index) in item.reps" :key="index" class="set" :class="{ invalid: invalidField === index }">
+    <div v-else class="sets" :style="{ gridTemplateColumns: `repeat(${Math.max(item.reps.length, 3)}, 1fr)` }">
+      <div v-for="(_, index) in item.reps" :key="index" class="set"
+        :class="{ invalid: invalidField === index, 'invalid-kg': invalidField === `kg-${index}` }">
         <span class="muted small">S{{ index + 1 }}</span>
+        <label v-if="perSet && item.kgs" class="set-kg">
+          <input
+            v-model="item.kgs[index]"
+            type="text"
+            inputmode="decimal"
+            autocomplete="off"
+            placeholder="kg"
+            :aria-label="`Satz ${index + 1} Gewicht`"
+            @focus="selectAll"
+            @input="emit('changed')"
+          />
+          <span class="muted small">kg</span>
+        </label>
         <button class="step" :aria-label="`Satz ${index + 1} mehr`" @click="stepReps(index, 1)">+</button>
         <input
           v-model="item.reps[index]"
@@ -186,7 +225,8 @@ function finishNote() {
           inputmode="numeric"
           pattern="[0-9]*"
           autocomplete="off"
-          :placeholder="repsPlaceholder"
+          :placeholder="repsPlaceholder(index)"
+          :aria-label="`Satz ${index + 1} Wiederholungen`"
           @focus="selectAll"
           @input="emit('changed')"
         />
@@ -194,11 +234,21 @@ function finishNote() {
       </div>
     </div>
 
+    <button v-if="!showWeightRow && hasTools" class="tools" @click="emit('showTools')">Scheiben &amp; Aufwärmen</button>
+
     <label v-if="!item.test" class="check">
       <input v-model="item.failure" type="checkbox" @change="emit('changed')" />
       Versagen im letzten Satz
     </label>
-    <label v-if="canTest || item.test" class="check">
+    <label v-if="!item.test" class="check">
+      <input v-model="item.limited" type="checkbox" @change="toggleLimited" />
+      Eingeschränkt (Schmerzen, Abbruch)
+    </label>
+    <label v-if="item.limited && !item.test" class="reason">Grund (optional)
+      <input v-model="item.reason" type="text" maxlength="200" placeholder="z. B. Schulter links" enterkeyhint="done" @input="emit('changed')" />
+    </label>
+    <p v-if="item.limited && !item.test" class="muted small">Zählt nicht für Ziel, Rekorde und Progression, aber beim Volumen.</p>
+    <label v-if="!item.limited" class="check">
       <input v-model="item.test" type="checkbox" @change="toggleTest" />
       1RM-Test (Maximalversuch)
     </label>
@@ -232,7 +282,11 @@ function finishNote() {
 .kg input { width: 100%; text-align: center; font-weight: 600; }
 .step { width: 52px; padding: 0; font-size: 1.4rem; }
 .tools { flex-basis: 100%; }
-.sets { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.sets { display: grid; gap: 6px; }
+.set-kg { display: flex; flex-direction: column; gap: 2px; }
+.set-kg input { width: 100%; text-align: center; padding: 0 4px; }
+.invalid-kg .set-kg input { border-color: var(--error); border-width: 2px; }
+.reason input { width: 100%; }
 .set { display: flex; flex-direction: column; align-items: stretch; gap: 4px; text-align: center; }
 .set .step { width: auto; }
 .set input { width: 100%; text-align: center; padding: 0 4px; font-weight: 600; }

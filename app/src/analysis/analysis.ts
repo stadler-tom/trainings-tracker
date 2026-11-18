@@ -5,10 +5,13 @@
 import type { BodyEntry, Exercise, ExerciseHistory } from '../api';
 import { latestBodyWeight, weekStart } from '../body';
 import { addDays } from '../format';
-import { e1rm, formatNumber, targetToday } from '../training';
+import { e1rm, formatNumber, perSetText, targetPerSet, targetToday } from '../training';
 
-/** One logged set: [date, day, exercise ID, set, kg, reps, failure, deload, test] (API 1.7.0). */
-export type LogRow = [string, string, string, number, number, number, boolean, boolean, boolean];
+/**
+ * One logged set: [date, day, exercise ID, set, kg, reps, failure, deload, test, limited]
+ * (API 1.7.0; limited since 1.8.0: null, or the reason of "Eingeschränkt", '' without one).
+ */
+export type LogRow = [string, string, string, number, number, number, boolean, boolean, boolean, (string | null)?];
 
 export interface MuscleGroup {
   name: string;
@@ -18,12 +21,12 @@ export interface MuscleGroup {
 
 export interface AnalysisData {
   apiVersion: string;
-  days: { name: string; exerciseIds: string[] }[];   // tab order
+  days: { name: string; exerciseIds: string[]; weekdays?: number[]; slots?: { id: string; sets: number }[] }[];   // tab order
   exercises: Exercise[];
   muscleGroups: MuscleGroup[];
   log: LogRow[];
   body: BodyEntry[];
-  settings: { deloadWeeks: number; weightTarget: number };
+  settings: { deloadWeeks: number; weightTarget: number; perSetWeight?: string };   // perSetWeight 'ja'/'nein' (API 1.8.0+)
 }
 
 export interface Session {
@@ -31,10 +34,12 @@ export interface Session {
   day: string;
   deload: boolean;
   kg: number;                      // weight of set 1
+  kgs: number[];                   // weight of every set, in set order (can differ since API 1.8.0)
   reps: number[];                  // in set order
   e1rm: number;                    // best set; with added weight incl. body weight, like the app
   volume: number;                  // sum of kg × reps (like the app's summary)
   isRecord: boolean;               // new best e1RM against all earlier regular sessions (not the first one)
+  limited: string | null;          // "Eingeschränkt": the reason ('' without one); kept out of the progression
 }
 
 export interface OneRmTest {
@@ -44,8 +49,8 @@ export interface OneRmTest {
 
 export interface ExerciseStats {
   exercise: Exercise;
-  sessions: Session[];             // all sessions incl. deload, oldest first, without 1RM tests
-  regular: Session[];              // sessions without deload
+  sessions: Session[];             // all sessions incl. deload and limited ones, oldest first, without 1RM tests
+  regular: Session[];              // sessions without deload and without "Eingeschränkt"
   tests: OneRmTest[];
   history: ExerciseHistory;        // same shape as the app's state, for targetToday
   best: Session | null;            // record session (highest e1RM)
@@ -67,14 +72,16 @@ export function bodyWeightOn(body: BodyEntry[], date: string): number | null {
 /** Sessions, tests and status of one exercise. */
 export function exerciseStats(exercise: Exercise, log: LogRow[], body: BodyEntry[]): ExerciseStats {
   const addedWeight = exercise.weightType === 'Zusatzgewicht';
-  const byKey = new Map<string, { date: string; day: string; deload: boolean; sets: { set: number; kg: number; reps: number; failure: boolean }[] }>();
+  const byKey = new Map<string, { date: string; day: string; deload: boolean; limited: string | null;
+    sets: { set: number; kg: number; reps: number; failure: boolean }[] }>();
   const tests: OneRmTest[] = [];
-  for (const [date, day, id, set, kg, reps, failure, deload, test] of log) {
+  for (const [date, day, id, set, kg, reps, failure, deload, test, limited] of log) {
     if (id !== exercise.id) continue;
     if (test) { tests.push({ date, kg }); continue; }
     const key = `${date}|${day}`;
-    const entry = byKey.get(key) ?? { date, day, deload: false, sets: [] };
+    const entry = byKey.get(key) ?? { date, day, deload: false, limited: null, sets: [] };
     entry.deload = entry.deload || deload;
+    if (limited != null) entry.limited = limited;
     entry.sets.push({ set, kg, reps, failure });
     byKey.set(key, entry);
   }
@@ -87,16 +94,16 @@ export function exerciseStats(exercise: Exercise, log: LogRow[], body: BodyEntry
       const bodyWeight = addedWeight ? bodyWeightOn(body, entry.date) ?? 0 : 0;
       const value = Math.max(...sets.map((s) => e1rm(s.kg + bodyWeight, s.reps)));
       const session: Session = {
-        date: entry.date, day: entry.day, deload: entry.deload, kg: sets[0].kg, reps: sets.map((s) => s.reps),
-        e1rm: value, volume: sets.reduce((sum, s) => sum + s.kg * s.reps, 0), isRecord: false,
+        date: entry.date, day: entry.day, deload: entry.deload, kg: sets[0].kg, kgs: sets.map((s) => s.kg), reps: sets.map((s) => s.reps),
+        e1rm: value, volume: sets.reduce((sum, s) => sum + s.kg * s.reps, 0), isRecord: false, limited: entry.limited,
       };
-      if (!entry.deload) {
+      if (!entry.deload && entry.limited === null) {
         session.isRecord = bestSession !== null && value > best + 1e-9;
         if (value > best + 1e-9) { best = value; bestSession = session; }
       }
       return session;
     });
-  const regular = sessions.filter((s) => !s.deload);
+  const regular = sessions.filter((s) => !s.deload && s.limited === null);
   const last = regular[regular.length - 1];
   const lastSets = last ? [...byKey.values()].find((e) => e.date === last.date && e.day === last.day)!.sets : [];
   const history: ExerciseHistory = {
@@ -120,10 +127,19 @@ export interface NextTraining {
   hint: string;                    // the rule as a sentence
 }
 
-/** "Nächstes Training": weight for all sets and the rule that raises it (app rules 1–4). */
-export function nextTraining(stats: ExerciseStats): NextTraining {
+/**
+ * "Nächstes Training": weight for all sets and the rule that raises it (app rules 1–4).
+ * Mode "Gewicht pro Satz" (setCount given): the weight of every set, double progression per set.
+ */
+export function nextTraining(stats: ExerciseStats, setCount: number | null = null): NextTraining {
   const { exercise, history } = stats;
   const target = targetToday(exercise, history, false);
+  if (setCount && target.kind !== 'new' && target.kind !== 'warmUp') {
+    const sets = targetPerSet(exercise, history, setCount, false);
+    return { kg: perSetText(sets).replace(/^↑ /, ''), hint: sets.some((t) => t.up)
+      ? 'Sätze am Wdh-Maximum steigen um den Gewichtssprung, die anderen bleiben.'
+      : `Jeder Satz steigt, sobald er ${exercise.repsMax} Wdh schafft.` };
+  }
   const kgText = (kg: number) => `${formatNumber(kg)} kg`;
   switch (target.kind) {
     case 'new':
@@ -203,9 +219,27 @@ export function weeklySets(data: AnalysisData, weeks: string[]): Map<string, Gro
   return result;
 }
 
+/**
+ * Number of sets for the per-set target: the most sets of this exercise in any day sheet (API 1.8.0+),
+ * else the sets of its last regular session; null when the mode "Gewicht pro Satz" is off.
+ */
+export function perSetCount(data: AnalysisData, stats: ExerciseStats): number | null {
+  if (data.settings.perSetWeight !== 'ja') return null;
+  const planned = data.days.flatMap((d) => d.slots ?? []).filter((s) => s.id === stats.exercise.id).map((s) => s.sets);
+  if (planned.length) return Math.max(...planned);
+  return stats.history.lastSession?.sets.length || 4;
+}
+
 /** Distinct trainings (date and day) in a period, both ends included. */
 export function trainingCount(log: LogRow[], from: string, to: string): number {
   return new Set(log.filter((r) => r[0] >= from && r[0] <= to).map((r) => `${r[0]}|${r[1]}`)).size;
+}
+
+/** "80 kg × 8/8/7", or "80/77,5/75 kg × 8/9/10" when the weights differ. */
+export function sessionText(session: Session): string {
+  const same = session.kgs.every((kg) => kg === session.kgs[0]);
+  const weights = same ? formatNumber(session.kg) : session.kgs.map((kg) => formatNumber(kg)).join('/');
+  return `${weights} kg × ${session.reps.join('/')}`;
 }
 
 /** "−1,7" / "+2,5" with a real minus sign. */

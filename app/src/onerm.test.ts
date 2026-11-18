@@ -26,7 +26,7 @@ describe('1RM test', () => {
   it('builds one set with 1 rep, no failure mark, whatever the set fields hold', () => {
     const result = buildPayload(draft('105', ['', '', '', ''], true));
     expect('payload' in result && result.payload.exercises[0]).toEqual(
-      { id: 'E06', kg: 105, reps: [1, null, null, null], failure: false, test: true });
+      { id: 'E06', sets: [{ kg: 105, reps: 1 }], failure: false, test: true });
   });
   it('needs a weight', () => {
     const result = buildPayload(draft('', ['', '', '', ''], true));

@@ -97,3 +97,33 @@ describe('rangeStart', () => {
     expect(rangeStart('all', '2026-11-18', undefined)).toBe('2026-11-18');
   });
 });
+
+describe('1.8: Eingeschränkt and weight per set', () => {
+  it('a limited session stays out of the progression but in the sessions', async () => {
+    const { exerciseStats, weeklySets } = await import('./analysis');
+    const log: LogRow[] = [
+      ...session('2026-10-01', 'E06', 80, [8, 8]),
+      ...session('2026-10-08', 'E06', 90, [6, 2]).map((r) => [...r.slice(0, 9), 'Schulter'] as unknown as LogRow),
+    ];
+    const s = exerciseStats(bench, log, []);
+    expect(s.sessions.map((x) => x.limited)).toEqual([null, 'Schulter']);
+    expect(s.regular.map((x) => x.date)).toEqual(['2026-10-01']);
+    expect(s.best?.date).toBe('2026-10-01');
+    expect(s.sessions[1].isRecord).toBe(false);
+    const data = { apiVersion: '1.8.0', days: [], body: [], settings: { deloadWeeks: 8, weightTarget: 0 }, exercises: [bench],
+      muscleGroups: [{ name: 'Brust', setsMin: 10, setsMax: 16 }], log };
+    expect(weeklySets(data, ['2026-09-28', '2026-10-05']).get('Brust')!.map((w) => w.sets)).toEqual([2, 2]);
+  });
+  it('per-set next training with the sets of the day sheet; sessionText with different weights', async () => {
+    const { exerciseStats, nextTraining, perSetCount, sessionText } = await import('./analysis');
+    const log: LogRow[] = [[ '2026-10-01', 'Push', 'E06', 1, 80, 10, false, false, false, null ], [ '2026-10-01', 'Push', 'E06', 2, 75, 8, false, false, false, null ]];
+    const s = exerciseStats(bench, log, []);
+    const data = { apiVersion: '1.8.0', body: [], exercises: [bench], muscleGroups: [], log,
+      settings: { deloadWeeks: 8, weightTarget: 0, perSetWeight: 'ja' },
+      days: [{ name: 'Push', exerciseIds: ['E06'], slots: [{ id: 'E06', sets: 3 }] }] };
+    expect(perSetCount(data, s)).toBe(3);
+    expect(nextTraining(s, 3).kg).toBe('Satz 1: 82,5 kg · Satz 2–3: 75 kg');
+    expect(perSetCount({ ...data, settings: { ...data.settings, perSetWeight: 'nein' } }, s)).toBeNull();
+    expect(sessionText(s.sessions[0])).toBe('80/75 kg × 10/8');
+  });
+});

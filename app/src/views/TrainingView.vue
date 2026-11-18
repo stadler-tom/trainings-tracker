@@ -1,10 +1,10 @@
 <script setup lang="ts">
 // Training input (requirements spec sections 4.2–4.8).
 import { computed, nextTick, ref } from 'vue';
-import { errorMessage, isOlderVersion, saveTraining, TEST_API_VERSION, updateDaySlots, updateExerciseNote, type Exercise, type State } from '../api';
+import { errorMessage, saveTraining, updateDaySlots, updateExerciseNote, type Exercise, type State } from '../api';
 import { latestBodyWeight } from '../body';
 import { deloadStatus } from '../deload';
-import { buildPayload, MAX_EXERCISES, newDraft, newItem, parseKg, type Draft } from '../draft';
+import { buildPayload, MAX_EXERCISES, newDraft, newItem, parseKg, type Draft, type InvalidField } from '../draft';
 import type { Settings } from '../storage';
 import { buildSummary, type Summary } from '../summary';
 import { targetToday } from '../training';
@@ -32,7 +32,7 @@ const saveMessage = ref('');
 const saveIsError = ref(false);
 const summary = ref<Summary | null>(null);     // shown after a successful save
 // input marked after a failed check: the date, or a field of one exercise
-const invalid = ref<{ itemIndex: number | null; field: 'date' | 'kg' | number } | null>(null);
+const invalid = ref<{ itemIndex: number | null; field: InvalidField } | null>(null);
 const toolsFor = ref<number | null>(null);
 
 const exercisesById = computed(() => {
@@ -101,8 +101,11 @@ function goToInvalid() {
     return;
   }
   const card = document.getElementById(`exercise-${target.itemIndex}`);
-  const input = card?.querySelector<HTMLInputElement>(
-    target.field === 'kg' ? '.kg input' : `.set:nth-child(${target.field + 1}) input`);
+  const field = target.field;
+  const selector = field === 'kg' ? '.kg input'
+    : typeof field === 'string' ? `.set:nth-child(${Number(field.slice(3)) + 1}) .set-kg input`
+    : `.set:nth-child(${field + 1}) > input`;
+  const input = card?.querySelector<HTMLInputElement>(selector);
   card?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   input?.focus({ preventScroll: true });
 }
@@ -113,14 +116,16 @@ function showMessage(text: string, isError: boolean) {
 }
 
 const bodyWeight = computed(() => latestBodyWeight(props.state?.body));
-const canTest = computed(() => props.state != null && !isOlderVersion(props.state.apiVersion, TEST_API_VERSION));
 
 // ----- exercise selection: written to the day sheet right away (section 4.2) -----
 let slotQueue = Promise.resolve();
 function syncSlots() {
   const ids = props.draft.items.map((i) => i.id);
   const day = props.state?.days.find((d) => d.name === props.draft.day);
-  if (day) day.exerciseIds = [...ids];
+  if (day) {
+    day.exerciseIds = [...ids];
+    day.slots = props.draft.items.map((i) => ({ id: i.id, sets: i.reps.length }));
+  }
   slotQueue = slotQueue
     .then(() => updateDaySlots(props.settings, props.draft.day, ids))
     .then(() => undefined)
@@ -173,7 +178,11 @@ async function saveNote(id: string, note: string) {
 // ----- tools overlay -----
 const toolsExercise = computed(() =>
   toolsFor.value === null ? undefined : exercisesById.value[props.draft.items[toolsFor.value]?.id]);
-const toolsKg = computed(() => (toolsFor.value === null ? null : parseKg(props.draft.items[toolsFor.value].kg)));
+const toolsKg = computed(() => {
+  if (toolsFor.value === null) return null;
+  const item = props.draft.items[toolsFor.value];
+  return parseKg(props.draft.perSet && !item.test ? item.kgs?.[0] ?? '' : item.kg);   // per set: the weight of set 1
+});
 const toolsTargetKg = computed(() => {
   const exercise = toolsExercise.value;
   if (!exercise || !props.state) return null;
@@ -260,7 +269,7 @@ function discard() {
       :history="state?.history[item.id]"
       :deload="draft.deload"
       :body-weight="bodyWeight"
-      :can-test="canTest"
+      :per-set="draft.perSet === true"
       :is-first="index === 0"
       :is-last="index === draft.items.length - 1"
       @changed="itemChanged(index)"

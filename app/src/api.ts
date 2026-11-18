@@ -4,8 +4,7 @@
 import type { AnalysisData } from './analysis/analysis';
 import type { Settings } from './storage';
 
-export const MIN_API_VERSION = '1.6.0';     // 1.6.0: history, corrections, body values
-export const TEST_API_VERSION = '1.7.0';    // 1RM tests need this script version (older ones would log a normal set)
+export const MIN_API_VERSION = '1.8.0';     // 1.8.0: weight per set in saveTraining, day sheets with weekdays and sets
 export const UPDATE_GUIDE_URL = 'https://github.com/stadler-tom/trainings-tracker/blob/main/template/UPDATE.md';
 
 export interface Exercise {
@@ -69,6 +68,7 @@ export interface TrainingDetail {
     id: string;
     name: string;
     sets: (LoggedSet & { e1rm: number; isPr: boolean; test?: boolean })[];   // test: 1RM test, e1rm = kg (API 1.7.0+)
+    limited?: string;              // marked "Eingeschränkt": the reason, '' without one (API 1.8.0+)
   }[];
 }
 
@@ -77,6 +77,13 @@ export interface Day {
   lastDate: string | null;
   recentDates?: string[];          // last trainings, newest first (API 1.3.0+)
   exerciseIds: string[];
+  weekdays?: number[];             // chosen in the day sheet, ISO numbers: Monday = 1 … Sunday = 7 (API 1.8.0+)
+  slots?: DaySlot[];               // exercises with their number of sets (API 1.8.0+)
+}
+
+export interface DaySlot {
+  id: string;
+  sets: number;                    // 1–5
 }
 
 export interface State {
@@ -89,6 +96,7 @@ export interface State {
   trainings?: TrainingOverview[];  // newest first (API 1.6.0+)
   body?: BodyEntry[];              // oldest first (API 1.6.0+)
   weightTarget?: number;           // kg per week, sheet "Einstellungen" (API 1.6.0+)
+  perSetWeight?: boolean;          // sheet "Einstellungen": one weight field per set (API 1.8.0+)
 }
 
 export class ApiError extends Error {
@@ -114,7 +122,7 @@ const MESSAGES: Record<string, string> = {
   unknown_exercise: 'Eine Übung fehlt im Übungsstamm des Sheets.',
   unknown_day: 'Diesen Trainingstag gibt es im Sheet nicht mehr. Wurde das Tagesblatt gelöscht? Die Eingaben bleiben erhalten.',
   invalid_date: 'Das Datum ist ungültig.',
-  too_many_exercises: 'Ein Trainingstag hat höchstens 10 Übungen.',
+  too_many_exercises: 'Ein Trainingstag hat höchstens 15 Übungen.',
   missing_client_id: 'Die App hat eine unvollständige Anfrage gesendet. Bitte die Seite neu laden.',
   unknown_action: 'Das Script im Sheet ist zu alt für diese App. Bitte das Script aktualisieren.',
   server_error: 'Im Script des Sheets ist ein Fehler aufgetreten',
@@ -202,14 +210,23 @@ export interface SavePayload {
   date: string;                                  // yyyy-MM-dd
   deload: boolean;
   note: string;
-  exercises: { id: string; kg: number | null; reps: (number | null)[]; failure: boolean; test?: boolean }[];   // test: 1RM test (API 1.7.0+)
+  exercises: SaveExercise[];
+}
+
+/** One exercise of a saved training (API 1.8.0+: a weight per set). */
+export interface SaveExercise {
+  id: string;
+  sets: { kg: number; reps: number }[];          // only the sets done, in order
+  failure: boolean;                              // marks the last set
+  test?: boolean;                                // 1RM test: one set with 1 rep (API 1.7.0+)
+  limited?: string | null;                       // "Eingeschränkt": the reason ('' allowed), null = normal (API 1.8.0+)
 }
 
 export const saveTraining = (settings: Settings, payload: SavePayload) =>
   call<{ savedSets?: number; duplicate?: boolean; state?: State }>(settings, 'saveTraining', payload);   // state since 1.4.0
 
 export const updateDaySlots = (settings: Settings, day: string, exerciseIds: string[]) =>
-  call<{ exerciseIds: string[] }>(settings, 'updateDaySlots', { day, exerciseIds });
+  call<{ exerciseIds: string[]; slots?: DaySlot[] }>(settings, 'updateDaySlots', { day, exerciseIds });
 
 export const updateExerciseNote = (settings: Settings, id: string, note: string) =>
   call<{ id: string }>(settings, 'updateExerciseNote', { id, note });

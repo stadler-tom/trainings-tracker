@@ -20,8 +20,8 @@ const state: State = {
 const payload = (deload = false): SavePayload => ({
   clientId: 'x', day: 'Beine', date: '2026-11-13', deload, note: '',
   exercises: [
-    { id: 'E01', kg: 72.5, reps: [6, 6, 5, null], failure: false },     // 72,5 × 6 = e1RM 87 > 84: record
-    { id: 'E08', kg: 17.5, reps: [10, 10, null, null], failure: false },   // 23,3 < 24,67: no record
+    { id: 'E01', sets: [6, 6, 5].map((reps) => ({ kg: 72.5, reps })), failure: false },   // 72,5 × 6 = e1RM 87 > 84: record
+    { id: 'E08', sets: [10, 10].map((reps) => ({ kg: 17.5, reps })), failure: false },     // 23,3 < 24,67: no record
   ],
 });
 
@@ -46,7 +46,7 @@ describe('buildSummary', () => {
         repsMin: 6, repsMax: 10, increment: 2.5, weightType: 'Zusatzgewicht', active: true, note: '', barWeight: null }],
       body: [{ date: '2026-11-12', weight: 90, waist: null }],
     };
-    const summary = buildSummary({ ...payload(), exercises: [{ id: 'E30', kg: 0, reps: [6, null, null, null], failure: false }] },
+    const summary = buildSummary({ ...payload(), exercises: [{ id: 'E30', sets: [{ kg: 0, reps: 6 }], failure: false }] },
       withPullUps);
     expect(Math.round(summary.exercises[0].sets[0].e1rm)).toBe(108);      // 90 × (1 + 6/30)
     expect(summary.volume).toBe(0);

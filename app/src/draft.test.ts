@@ -60,7 +60,7 @@ describe('buildPayload', () => {
   it('builds the payload and skips exercises without sets', () => {
     const result = buildPayload(draftWith([{ reps: ['8', '8', '', '7'], failure: true }, {}, {}]));
     expect('payload' in result && result.payload.exercises).toEqual([
-      { id: 'E06', kg: 40, reps: [8, 8, null, 7], failure: true },
+      { id: 'E06', sets: [{ kg: 40, reps: 8 }, { kg: 40, reps: 8 }, { kg: 40, reps: 7 }], failure: true, limited: null },
     ]);
     expect('sets' in result && result.sets).toBe(3);
   });

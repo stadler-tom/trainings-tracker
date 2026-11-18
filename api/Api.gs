@@ -13,7 +13,7 @@
  * Error codes are English; the app shows German messages.
  */
 
-const API_VERSION = '1.7.0';   // 1.7.0: muscle groups sheet, 1RM tests, getAnalysis for the PC analysis
+const API_VERSION = '1.8.0';   // 1.8.0: day sheets as training plan (weekdays, sets), weight per set, "Eingeschränkt"
 const APP_URL = 'https://stadler-tom.github.io/trainings-tracker/';
 const ANALYSIS_URL = APP_URL + 'auswertung/';
 const KEY_PROPERTY = 'API_KEY';
@@ -31,6 +31,9 @@ const SETTINGS = [
   { key: 'weightTarget', label: 'Ziel Körpergewicht pro Woche (kg)', value: -0.5, min: -2, max: 2,
     help: 'Negativ = abnehmen, positiv = zunehmen, 0 = halten. Die App vergleicht den Wochenschnitt ' +
       'mit dem von vor 2 Wochen und meldet, ob du im Plan liegst.' },
+  { key: 'perSetWeight', label: 'Gewicht pro Satz', value: 'nein', options: ['ja', 'nein'],   // since 1.8.0
+    help: 'ja = in der App hat jeder Satz ein eigenes Gewichtsfeld, und jeder Satz steigert sich für sich: ' +
+      'schafft er das Wdh-Maximum, steigt sein Gewicht beim nächsten Mal um den Gewichtssprung. nein = ein Gewicht für alle Sätze.' },
 ];
 // sheet "Körper": A date, B weight kg, C waist cm (layout shared with the analysis files)
 const BODY = { date: 0, weight: 1, waist: 2 };
@@ -89,13 +92,12 @@ function setupApi() {
   }
   ensureExerciseColumns_(ss);
   ensureSettings_(ss);
-  ensureLogTestColumn_(ss);
+  ensureLogColumns_(ss);
   const groups = withLock_(function () { return { ok: true, data: ensureMuscleGroups_(ss) }; }).data;
   if (!groups.variants.length) applyMuscleGroupDropdown_(ss);
   refreshExerciseList_(ss);
-  const ctx = loadContext_(ss);
+  const converted = withLock_(function () { return { ok: true, data: upgradeDaySheets_(ss) }; }).data;   // since 1.8.0
   const days = daySheets_(ss);
-  days.forEach(function (sheet) { fillSlotIds_(sheet, ctx); });
   withLock_(function () { return syncDayNames_(ss); });
   const names = days.map(function (sheet) { return sheet.getName(); });
   Logger.log('Setup done. Day sheets: ' + (names.length ? names.join(', ') : 'none'));
@@ -107,21 +109,10 @@ function setupApi() {
     : (groups.added.length ? 'Muskelgruppen übernommen: ' + groups.added.join(', ') + '. Ziel-Sätze pro Woche bitte im Blatt Muskelgruppen eintragen. ' : '');
   SpreadsheetApp.getUi().alert('Einrichtung', 'Fertig. ' +
     (names.length ? 'Trainingstage: ' + names.join(', ') + '. '
-      : 'Es gibt noch kein Tagesblatt: ein Tagesblatt duplizieren oder die Vorlage neu kopieren. ') + groupText +
+      : 'Es gibt noch kein Tagesblatt: ein Tagesblatt duplizieren oder die Vorlage neu kopieren. ') +
+    (converted.length ? 'Neu aufgebaut (bitte Wochentage und Sätze prüfen): ' + converted.join(', ') + '. ' : '') + groupText +
     'Nächster Schritt laut Anleitung: Bereitstellen → Neue Bereitstellung → Web-App.',
     SpreadsheetApp.getUi().ButtonSet.OK);
-}
-
-/** Writes the exercise ID next to every slot that has none yet (day sheets from before version 1.2). */
-function fillSlotIds_(sheet, ctx) {
-  ensureIdColumn_(sheet);
-  const values = slotValues_(sheet);
-  for (let slot = 0; slot < SLOT_COUNT; slot++) {
-    const row = values[slot * ROWS_PER_SLOT];
-    const name = String(row[0] || '');
-    const id = ctx.idByName[name];
-    if (!row[ID_COL - 1] && id) sheet.getRange(nameRow_(slot), ID_COL).setValue(id);
-  }
 }
 
 /**
@@ -212,7 +203,7 @@ function buildState_(ss, daySheets, exercises, logRows, extras) {
       if (!ht.bestTest || kg > ht.bestTest.kg) ht.bestTest = { kg: kg, date: dateKey };
       return;
     }
-    if (deload) return;
+    if (deload || isLimitedRow_(r)) return;    // limited (since 1.8.0): counts as training, not for the progression
 
     const value = e1rmOf_(kg, reps, weightTypeById[id] === VALUE.addedWeight ? bodyWeightAt(dateKey) : null);
     const byDate = e1rmByDate[id] || (e1rmByDate[id] = {});
@@ -245,10 +236,13 @@ function buildState_(ss, daySheets, exercises, logRows, extras) {
 
   const days = daySheets.map(function (sheet) {
     const name = sheet.getName();
-    const ids = readSlots_(sheet, { idByName: idByName }).map(function (slot) { return slot.id; });
+    const slots = readDaySlots_(sheet, { idByName: idByName });
     const dates = Object.keys(datesByDay[name] || {}).sort().reverse();
     // recentDates (since 1.3.0): the last trainings of this day, newest first; the app derives the usual weekday
-    return { name: name, lastDate: dates[0] || null, recentDates: dates.slice(0, RECENT_DATES), exerciseIds: ids.filter(Boolean) };
+    // weekdays (since 1.8.0): ISO numbers from the sheet (Monday = 1); slots (since 1.8.0): exercise and number of sets
+    return { name: name, lastDate: dates[0] || null, recentDates: dates.slice(0, RECENT_DATES),
+      exerciseIds: slots.map(function (slot) { return slot.id; }), weekdays: readWeekdays_(sheet),
+      slots: slots.map(function (slot) { return { id: slot.id, sets: slot.sets }; }) };
   });
 
   return {
@@ -257,6 +251,7 @@ function buildState_(ss, daySheets, exercises, logRows, extras) {
     trainings: trainingList,                               // since 1.6.0
     body: extras.body,                                     // since 1.6.0, oldest first
     weightTarget: extras.settings.weightTarget,            // since 1.6.0
+    perSetWeight: extras.settings.perSetWeight === VALUE.yes,   // since 1.8.0
   };
 }
 
@@ -280,10 +275,12 @@ function bodyWeightLookup_(body) {
 }
 
 /**
- * Saves one training from the app (section 4.3). Payload:
+ * Saves one training from the app (section 4.3). Payload (since 1.8.0, weight per set):
  * { clientId, day, date: 'yyyy-MM-dd', deload, note,
- *   exercises: [{ id, kg, reps: [n|null, n|null, n|null, n|null], failure, test }] }
+ *   exercises: [{ id, sets: [{ kg, reps }], failure, test, limited }] }
+ * sets: only the sets done, in order (1–5); failure marks the last set.
  * test (since 1.7.0): a 1RM test, exactly one set with 1 rep; logged with "1RM-Test" = 1.
+ * limited (since 1.8.0): null, or the reason ('' allowed); logged in "Eingeschränkt" (reason or "ja").
  * The log is append-only: the app never changes or removes saved rows (corrections only by hand in the sheet).
  */
 function saveTrainingFromApp_(p) {
@@ -308,19 +305,18 @@ function saveTrainingFromApp_(p) {
     const item = p.exercises[i];
     const ex = byId[item.id];
     if (!ex) return { ok: false, error: 'unknown_exercise', detail: String(item.id) };
-    const sets = [];
-    (item.reps || []).slice(0, 4).forEach(function (reps, index) {
-      if (reps !== null && reps !== undefined && reps !== '') sets.push({ no: index + 1, reps: Number(reps) });
-    });
+    const sets = Array.isArray(item.sets) ? item.sets : [];
     if (!sets.length) continue;                                   // no sets = exercise not done
-    if (typeof item.kg !== 'number' || !(item.kg >= 0)) return { ok: false, error: 'missing_weight', detail: ex.name };
-    if (sets.some(function (s) { return !(s.reps > 0); })) return { ok: false, error: 'invalid_reps', detail: ex.name };
+    if (sets.length > SET_LIMITS.max) return { ok: false, error: 'invalid_reps', detail: ex.name };
+    if (sets.some(function (s) { return !s || typeof s.kg !== 'number' || !(s.kg >= 0); })) return { ok: false, error: 'missing_weight', detail: ex.name };
+    if (sets.some(function (s) { return !(s.reps > 0) || Math.floor(s.reps) !== s.reps; })) return { ok: false, error: 'invalid_reps', detail: ex.name };
     const isTest = item.test === true;
     if (isTest && (sets.length !== 1 || sets[0].reps !== 1)) return { ok: false, error: 'invalid_test', detail: ex.name };
+    const limited = typeof item.limited === 'string' ? (item.limited.trim().slice(0, 200) || VALUE.yes) : '';
     sets.forEach(function (s, index) {
-      rows.push([date, day, ex.id, ex.name, ex.muscleGroup, s.no, item.kg, s.reps,
+      rows.push([date, day, ex.id, ex.name, ex.muscleGroup, index + 1, s.kg, s.reps,
         !isTest && item.failure === true && index === sets.length - 1, p.deload === true, now, String(p.note || ''),
-        isTest ? 1 : '']);
+        isTest ? 1 : '', limited]);
     });
   }
   if (!rows.length) return { ok: false, error: 'nothing_to_save' };
@@ -331,18 +327,18 @@ function saveTrainingFromApp_(p) {
   if (logRows.some(function (r) { return isTrainingRow_(r, dateText, day, tz); })) return { ok: false, error: 'already_saved' };
 
   const allRows = logRows.concat(rows);
-  if (rows.some(isTestRow_)) ensureLogTestColumn_(ss);     // a log from before 1.7.0 gets the column on the first test
-  const width = rows.some(isTestRow_) ? LOG_HEADER.length : LOG_HEADER.length - 1;   // never write column M otherwise
-  ss.getSheetByName(SHEET.log).getRange(logRows.length + 2, 1, rows.length, width)
-    .setValues(rows.map(function (row) { return row.slice(0, width); }));
+  ensureLogColumns_(ss);                                   // a log from before 1.8.0 gets columns M and N
+  ss.getSheetByName(SHEET.log).getRange(logRows.length + 2, 1, rows.length, LOG_HEADER.length).setValues(rows);
   rememberClientId_(p.clientId);
-  refreshAllInfo_(ss, loadContext_(ss, allRows), daySheets);   // keeps the info rows of the sheet input in sync
   // state (since 1.4.0): the app needs no second request to show the new "zuletzt" and targets
   const state = buildState_(ss, daySheets, exercises, allRows, readExtras_(ss));
   return { ok: true, data: { savedSets: rows.length, state: state } };
 }
 
-/** Writes the exercise order of one day sheet (section 4.2). Payload: { day, exerciseIds: [...] } */
+/**
+ * Writes the exercise order of one day sheet (section 4.2). Payload: { day, exerciseIds: [...] }
+ * Exercises that stay keep their number of sets; new ones get the default (4).
+ */
 function updateDaySlots_(p) {
   const ss = SpreadsheetApp.getActive();
   syncDayNames_(ss);
@@ -352,16 +348,13 @@ function updateDaySlots_(p) {
   if (ids.length > SLOT_COUNT) return { ok: false, error: 'too_many_exercises' };
   const ctx = loadContext_(ss);
   if (ids.some(function (id) { return !ctx.exercises[id]; })) return { ok: false, error: 'unknown_exercise' };
-
-  // keep inputs that were already typed into the sheet for exercises that stay
-  const inputsById = {};
-  readSlots_(sheet, ctx).forEach(function (slot) { inputsById[slot.id] = slot.inputs; });
+  const setsById = {};
+  readDaySlots_(sheet, ctx).forEach(function (slot) { setsById[slot.id] = slot.sets; });
   const used = ids.map(function (id) {
-    return { id: id, name: ctx.exercises[id].name, inputs: inputsById[id] || ['', '', '', '', '', false] };
+    return { id: id, name: ctx.exercises[id].name, sets: setsById[id] || SET_LIMITS.default };
   });
-  writeSlots_(sheet, used, ctx);
-  refreshInfo_(sheet, ctx);
-  return { ok: true, data: { exerciseIds: ids } };
+  writeDaySlots_(sheet, used, ctx);
+  return { ok: true, data: { exerciseIds: ids, slots: used.map(function (slot) { return { id: slot.id, sets: slot.sets }; }) } };
 }
 
 /** Saves the equipment note of one exercise (section 4.6). Payload: { id, note } */
@@ -383,6 +376,8 @@ function updateExerciseNote_(p) {
  * One training with all sets, for the summary in the history (since 1.6.0). Payload: { date, day }
  * A set is marked as record if it is the best set of its exercise and beats all earlier trainings.
  * 1RM tests (since 1.7.0) carry test: true and count as record if they beat all earlier tests.
+ * Limited exercises (since 1.8.0) carry limited: reason ('' without one); they are never a record
+ * and do not count as earlier best either.
  */
 function getTraining_(p) {
   const ss = SpreadsheetApp.getActive();
@@ -408,6 +403,7 @@ function getTraining_(p) {
         ex = exerciseById[id] = { id: String(id), name: byId[id] ? byId[id].name : String(r[LOG.exercise]), sets: [] };
         result.exercises.push(ex);
       }
+      if (isLimitedRow_(r)) ex.limited = limitedReason_(r);
       const isTest = isTestRow_(r);
       ex.sets.push({ set: Number(r[LOG.set]), kg: kg, reps: reps, failure: r[LOG.failure] === true,
         e1rm: isTest ? kg : Math.round(value * 10) / 10, isPr: false, test: isTest });
@@ -415,7 +411,7 @@ function getTraining_(p) {
       const b = best[id] || (best[id] = { e1rm: 0, repsAtZero: 0, testKg: null });
       if (isTestRow_(r)) {
         b.testKg = Math.max(b.testKg || 0, kg);
-      } else if (r[LOG.deload] !== true) {
+      } else if (r[LOG.deload] !== true && !isLimitedRow_(r)) {
         b.e1rm = Math.max(b.e1rm, value);
         if (kg === 0) b.repsAtZero = Math.max(b.repsAtZero, reps);
       }
@@ -433,6 +429,7 @@ function getTraining_(p) {
     result.exercises.forEach(function (ex) {
       const b = best[ex.id];
       const regular = ex.sets.filter(function (s) { return !s.test; });
+      if (ex.limited !== undefined) return;                   // limited: never a record
       if (!b || !b.e1rm && !b.repsAtZero || !regular.length) return;   // first training of this exercise: no record
       const top = regular.reduce(function (x, y) { return y.e1rm > x.e1rm || (y.e1rm === x.e1rm && y.reps > x.reps) ? y : x; });
       const beatsE1rm = top.e1rm > Math.round(b.e1rm * 10) / 10;
@@ -480,7 +477,8 @@ function saveBody_(p) {
 /**
  * Everything the PC analysis needs in one read-only answer (since 1.7.0). Writes nothing
  * except that a renamed muscle group is followed first, like getState does for days.
- * log: one entry per set, oldest first: [date 'yyyy-MM-dd', day, exercise ID, set, kg, reps, failure, deload, test]
+ * log: one entry per set, oldest first:
+ *   [date 'yyyy-MM-dd', day, exercise ID, set, kg, reps, failure, deload, test, limited (since 1.8.0: null or the reason)]
  */
 function getAnalysis_() {
   const ss = SpreadsheetApp.getActive();
@@ -496,13 +494,15 @@ function getAnalysis_() {
     const date = r[LOG.date], id = r[LOG.exerciseId], kg = r[LOG.kg], reps = r[LOG.reps];
     if (!(date instanceof Date) || !id || typeof kg !== 'number' || typeof reps !== 'number') return;
     log.push([Utilities.formatDate(date, tz, 'yyyy-MM-dd'), String(r[LOG.day] || ''), String(id), Number(r[LOG.set]) || 1,
-      kg, reps, r[LOG.failure] === true, r[LOG.deload] === true, isTestRow_(r)]);
+      kg, reps, r[LOG.failure] === true, r[LOG.deload] === true, isTestRow_(r), isLimitedRow_(r) ? limitedReason_(r) : null]);
   });
   log.sort(function (a, b) { return a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : a[3] - b[3]; });
   return {
     apiVersion: API_VERSION,
     days: days.map(function (sheet) {                // tab order, with the exercises of each day sheet
-      return { name: sheet.getName(), exerciseIds: readSlots_(sheet, { idByName: idByName }).map(function (slot) { return slot.id; }).filter(Boolean) };
+      const slots = readDaySlots_(sheet, { idByName: idByName });
+      return { name: sheet.getName(), weekdays: readWeekdays_(sheet), exerciseIds: slots.map(function (slot) { return slot.id; }),
+        slots: slots.map(function (slot) { return { id: slot.id, sets: slot.sets }; }) };
     }),
     exercises: exercises,
     muscleGroups: readMuscleGroups_(ss),
@@ -575,10 +575,16 @@ function ensureSettings_(ss) {
   const labels = sheet.getRange(1, 1, Math.max(sheet.getLastRow(), 1), 1).getValues()
     .map(function (r) { return String(r[0]).trim(); });
   SETTINGS.forEach(function (setting) {
-    if (labels.indexOf(setting.label) >= 0) return;
-    const row = sheet.getLastRow() + 1;
-    sheet.getRange(row, 1, 1, 3).setValues([[setting.label, setting.value, setting.help]]);
-    sheet.getRange(row, 3).setWrap(true);
+    let row = labels.indexOf(setting.label) + 1;
+    if (!row) {
+      row = sheet.getLastRow() + 1;
+      sheet.getRange(row, 1, 1, 3).setValues([[setting.label, setting.value, setting.help]]);
+      sheet.getRange(row, 3).setWrap(true);
+    }
+    if (setting.options) {                     // yes/no settings get a dropdown (also on existing rows)
+      sheet.getRange(row, 2).setDataValidation(SpreadsheetApp.newDataValidation()
+        .requireValueInList(setting.options, true).setAllowInvalid(false).build());
+    }
   });
 }
 
@@ -591,6 +597,11 @@ function readSettings_(ss) {
   sheet.getRange(1, 1, sheet.getLastRow(), 2).getValues().forEach(function (row) {
     const setting = SETTINGS.filter(function (s) { return s.label === String(row[0]).trim(); })[0];
     if (!setting || row[1] === '' || row[1] === null) return;
+    if (setting.options) {
+      const text = String(row[1]).trim().toLowerCase();
+      if (setting.options.indexOf(text) >= 0) result[setting.key] = text;
+      return;
+    }
     const value = Number(row[1]);
     if (value >= setting.min && value <= setting.max) result[setting.key] = value;
   });
