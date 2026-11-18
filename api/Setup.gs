@@ -21,7 +21,7 @@ const EXERCISES = [
   ["E06", "Schrägbankdrücken Multipresse", "Brust", "Grundübung", 6, 10, 2.5, "Gesamt", "ja"],
   ["E07", "Flachbankdrücken Kurzhantel", "Brust", "Grundübung", 8, 12, 2.5, "pro Hand", "ja"],
   ["E08", "Kabel-Fliegende stehend (mittig)", "Brust", "Isolation", 10, 15, 1.25, "pro Seite", "ja"],
-  ["E09", "Schulterdrücken Kurzhantel sitzend", "Schulter vorne", "Grundübung", 8, 12, 2.5, "pro Hand", "nein"],
+  ["E09", "Schulterdrücken Kurzhantel sitzend", "Schulter seitlich", "Grundübung", 8, 12, 2.5, "pro Hand", "nein"],
   ["E10", "Lu Raises", "Schulter seitlich", "Isolation", 12, 20, 2.5, "pro Hand", "ja"],
   ["E11", "Trizepsdrücken Kabel", "Trizeps", "Isolation", 10, 15, 1.25, "Gesamt", "ja"],
   ["E12", "Latzug einarmig kniend", "Rücken", "Grundübung", 8, 12, 1.25, "pro Seite", "ja"],
@@ -40,6 +40,14 @@ const EXERCISES = [
   ["E25", "Pec Deck / Butterfly", "Brust", "Isolation", 10, 15, 5.0, "Gesamt", "ja"],
   ["E26", "Außenrotation Kabel", "Rotatorenmanschette", "Aufwärmen", 15, 15, "", "pro Seite", "ja"],
   ["E27", "Überkopf-Trizeps Kabel (stehend)", "Trizeps", "Isolation", 10, 15, 1.25, "Gesamt", "ja"]
+];
+
+// sheet "Muskelgruppen" of the template: name, weekly working sets min/max as a starting point (null = no target).
+// Front delts have no group of their own: pressing trains them; overhead pressing counts for the side delts.
+const TEMPLATE_MUSCLE_GROUPS = [
+  ['Brust', 10, 16], ['Rücken', 12, 20], ['Schulter seitlich', 8, 16], ['Schulter hinten', 6, 12],
+  ['Bizeps', 8, 14], ['Trizeps', 8, 14], ['Quadrizeps', 10, 16], ['Beinbeuger/Gesäß', 8, 14],
+  ['Waden', 8, 16], ['Bauch', 6, 12], ['Rotatorenmanschette', null, null]
 ];
 
 // bar weight in kg for the plate calculator (column "Stangengewicht kg"); others stay empty
@@ -72,7 +80,8 @@ function create() {
     if (row[EX.id] in EXAMPLE_BAR_WEIGHTS) exerciseSheet.getRange(i + 2, extra.barWeight).setValue(EXAMPLE_BAR_WEIGHTS[row[EX.id]]);
   });
   ss.getSheetByName(SHEET.lists).hideSheet();
-  ensureMuscleGroups_(ss);                    // sheet "Muskelgruppen" from the example exercises (since 1.7.0)
+  buildMuscleGroupSheet_(ss);                 // since 1.7.0
+  ensureMuscleGroups_(ss);                    // adds any example group missing above and the hidden IDs
   applyMuscleGroupDropdown_(ss);
   refreshExerciseList_(ss);
   buildLogSheet_(ss);
@@ -113,6 +122,17 @@ function buildExerciseSheet_(ss) {
   sheet.getRange('D2:D500').setDataValidation(list(['Grundübung', 'Isolation', VALUE.warmUp]));
   sheet.getRange('H2:H500').setDataValidation(list(['Gesamt', 'pro Hand', 'pro Seite', VALUE.addedWeight]));
   sheet.getRange('I2:I500').setDataValidation(list([VALUE.active, 'nein']));
+}
+
+function buildMuscleGroupSheet_(ss) {
+  const sheet = ss.getSheetByName(SHEET.muscleGroups);
+  sheet.getRange(1, 1, 1, MG_HEADER.length).setValues([MG_HEADER]);
+  styleHeaderRow_(sheet, MG_HEADER.length);
+  sheet.getRange(2, 1, TEMPLATE_MUSCLE_GROUPS.length, 3).setValues(TEMPLATE_MUSCLE_GROUPS.map(function (g) {
+    return [g[0], g[1] === null ? '' : g[1], g[2] === null ? '' : g[2]];
+  }));
+  [180, 130, 130, 60].forEach(function (w, i) { sheet.setColumnWidth(i + 1, w); });
+  sheet.hideColumns(MG.id + 1);
 }
 
 function buildBodySheet_(ss) {

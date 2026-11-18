@@ -33,7 +33,15 @@ function calendarWeek(monday: string): number {
 }
 
 const targets = computed(() => new Map(props.data.muscleGroups.map((g) => [g.name, g])));
-const groupNames = computed(() => [...sets.value.keys()]);
+const hasTarget = (name: string) => {
+  const t = targets.value.get(name);
+  return Boolean(t && t.setsMin !== null && t.setsMax !== null);
+};
+// groups with a target first (sheet order), groups without one at the end, shown in grey
+const groupNames = computed(() => {
+  const names = [...sets.value.keys()];
+  return [...names.filter(hasTarget), ...names.filter((n) => !hasTarget(n))];
+});
 const anyDeload = (i: number) => [...sets.value.values()].some((v) => v[i]?.deload);
 
 const weekLabel = computed(() => {
@@ -57,10 +65,10 @@ function judge(value: number, name: string): 'under' | 'in' | 'over' | 'none' {
   if (!t || t.setsMin === null || t.setsMax === null) return 'none';
   return value < t.setsMin ? 'under' : value > t.setsMax ? 'over' : 'in';
 }
-const BAR_COLOR = { under: '#b45309', in: '#15803d', over: '#1d4ed8', none: 'var(--a-chart)' };
+const BAR_COLOR = { under: '#b45309', in: '#15803d', over: '#1d4ed8', none: 'var(--a-neutral)' };
 const CELL = {
   under: { bg: '#fde68a', fg: '#1f2937' }, in: { bg: '#bbf7d0', fg: '#1f2937' },
-  over: { bg: '#1d4ed8', fg: '#ffffff' }, none: { bg: 'var(--a-line)', fg: 'var(--a-text)' },
+  over: { bg: '#1d4ed8', fg: '#ffffff' }, none: { bg: 'var(--a-line)', fg: 'var(--a-muted)' },
 };
 
 const bars = computed(() => groupNames.value.map((name) => {
@@ -68,7 +76,7 @@ const bars = computed(() => groupNames.value.map((name) => {
   const t = targets.value.get(name);
   const hasTarget = t && t.setsMin !== null && t.setsMax !== null;
   return {
-    name, value,
+    name, value, muted: !hasTarget,
     target: hasTarget ? `${t!.setsMin}–${t!.setsMax}` : 'kein Ziel',
     bandLeft: hasTarget ? pct(t!.setsMin!) : '0%',
     bandWidth: hasTarget ? `${(((Math.min(t!.setsMax!, scaleMax.value) - t!.setsMin!) / scaleMax.value) * 100).toFixed(1)}%` : '0%',
@@ -83,6 +91,7 @@ const heatRange = computed(() => {
 });
 const heat = computed(() => groupNames.value.map((name) => ({
   name,
+  muted: !hasTarget(name),
   cells: heatRange.value.map((i) => {
     const cell = sets.value.get(name)![i];
     return { value: cell.sets, deload: cell.deload, ...CELL[judge(cell.sets, name)], current: i === selected.value };
@@ -114,8 +123,8 @@ const heat = computed(() => groupNames.value.map((name) => ({
         <span><span style="width: 18px; height: 10px; background: #1d4ed8; display: inline-block"></span>über Ziel</span>
       </div>
     </div>
-    <div v-for="b in bars" :key="b.name" style="display: grid; grid-template-columns: 190px minmax(0, 1fr) 110px; gap: 14px; align-items: center">
-      <div style="font-weight: 600">{{ b.name }}</div>
+    <div v-for="b in bars" :key="b.name" :style="{ display: 'grid', gridTemplateColumns: '190px minmax(0, 1fr) 110px', gap: '14px', alignItems: 'center', color: b.muted ? 'var(--a-muted)' : undefined }">
+      <div :style="{ fontWeight: b.muted ? 400 : 600 }">{{ b.name }}</div>
       <div style="position: relative; height: 28px; background: var(--a-bg); border-radius: 6px">
         <div v-if="b.hasTarget" :style="{ position: 'absolute', top: 0, bottom: 0, left: b.bandLeft, width: b.bandWidth, background: '#dcfce7', borderLeft: '1px solid #86efac', borderRight: '1px solid #86efac' }"></div>
         <div :style="{ position: 'absolute', top: '7px', height: '14px', left: 0, width: b.width, background: b.color, borderRadius: '0 4px 4px 0' }"></div>
@@ -140,7 +149,7 @@ const heat = computed(() => groupNames.value.map((name) => ({
         </thead>
         <tbody>
           <tr v-for="row in heat" :key="row.name">
-            <th scope="row" style="text-align: left; padding: 4px 6px">{{ row.name }}</th>
+            <th scope="row" :style="{ textAlign: 'left', padding: '4px 6px', fontWeight: row.muted ? 400 : 700, color: row.muted ? 'var(--a-muted)' : undefined }">{{ row.name }}</th>
             <td v-for="(c, k) in row.cells" :key="k"
               :style="{ textAlign: 'center', padding: '8px 2px', borderRadius: '6px', background: c.bg, color: c.fg, outline: c.current ? '2px solid var(--a-accent)' : 'none' }">
               {{ c.value }}{{ c.deload ? ' D' : '' }}
@@ -153,6 +162,7 @@ const heat = computed(() => groupNames.value.map((name) => ({
       <span><span style="width: 14px; height: 14px; border-radius: 4px; background: #fde68a; display: inline-block"></span>unter Ziel</span>
       <span><span style="width: 14px; height: 14px; border-radius: 4px; background: #bbf7d0; display: inline-block"></span>im Ziel</span>
       <span><span style="width: 14px; height: 14px; border-radius: 4px; background: #1d4ed8; display: inline-block"></span>über Ziel</span>
+      <span>grau = kein Zielbereich</span>
       <span>D = Deload-Woche</span>
     </div>
   </section>
