@@ -219,3 +219,27 @@ export function signed(value: number, digits = 1): string {
 export function oneDecimal(value: number): string {
   return value.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 }
+
+/** Time ranges of the charts (buttons above each chart). */
+export const CHART_RANGES = [
+  { id: '1w', label: '1 Woche', days: 7 },
+  { id: '1m', label: '1 Monat', days: 30 },
+  { id: '6m', label: '6 Monate', days: 182 },
+  { id: 'all', label: 'Gesamt', days: null },
+] as const;
+export type ChartRange = (typeof CHART_RANGES)[number]['id'];
+
+/**
+ * First day of a range ending today; for "Gesamt" the first date of the data (or today without data).
+ * The x axis of a chart then runs from this day to today.
+ */
+export function rangeStart(range: ChartRange, today: string, firstDate: string | undefined): string {
+  const days = CHART_RANGES.find((r) => r.id === range)!.days;
+  if (days === null) return firstDate && firstDate < today ? firstDate : today;
+  return addDays(today, -(days - 1));
+}
+
+/** "6 Monate" etc. for labels such as "Veränderung (6 Monate)". */
+export function rangeLabel(range: ChartRange): string {
+  return CHART_RANGES.find((r) => r.id === range)!.label;
+}

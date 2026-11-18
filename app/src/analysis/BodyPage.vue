@@ -3,19 +3,16 @@
 import { computed, ref } from 'vue';
 import { movingAverage, signedKg, waistTrend, weekAverages, weekStart, weightCheck } from '../body';
 import { addDays, formatIsoDate, todayIso } from '../format';
-import { bodyWeightOn, e1rmAt, oneDecimal, trainingCount, weeksBetween, type AnalysisData, type ExerciseStats } from './analysis';
+import { bodyWeightOn, e1rmAt, oneDecimal, rangeLabel, rangeStart, trainingCount, weeksBetween, type AnalysisData, type ChartRange, type ExerciseStats } from './analysis';
+import RangeButtons from './RangeButtons.vue';
 import LineChart from './LineChart.vue';
 
 const props = defineProps<{ data: AnalysisData; stats: Map<string, ExerciseStats> }>();
 
-const RANGES = [
-  { id: '1m', label: '1 Mon.', days: 30 },
-  { id: '3m', label: '3 Mon.', days: 91 },
-  { id: '6m', label: '6 Mon.', days: 182 },
-] as const;
-const range = ref<(typeof RANGES)[number]['id']>('3m');
+// the range of the weight chart also sets the start for waist and relative strength
+const range = ref<ChartRange>('6m');
 const today = todayIso();
-const from = computed(() => addDays(today, -(RANGES.find((r) => r.id === range.value)!.days - 1)));
+const from = computed(() => rangeStart(range.value, today, props.data.body[0]?.date));
 
 const body = computed(() => props.data.body);
 const shown = computed(() => body.value.filter((b) => b.date >= from.value && b.weight !== null));
@@ -53,7 +50,7 @@ const tiles = computed(() => {
     trendText: check ? `${signedKg(check.change / 2)} pro Woche · ${check.text}` : 'Braucht je Woche mind. 3 Messungen.',
     waist: waist ? `${oneDecimal(waist.latest)} cm` : '–',
     waistText: waist && waistFrom && waistFrom.waist !== null
-      ? `${signedKg(waist.latest - waistFrom.waist, 'cm')} im Zeitraum`
+      ? `${signedKg(waist.latest - waistFrom.waist, 'cm')} (${rangeLabel(range.value)})`
       : 'noch kein Bauchumfang',
     relNow: relNow !== null ? `${relNow.toLocaleString('de-DE', { maximumFractionDigits: 2, minimumFractionDigits: 2 })} × KG` : '–',
     relStart: relStart !== null ? `am ${formatIsoDate(from.value)}: ${relStart.toLocaleString('de-DE', { maximumFractionDigits: 2, minimumFractionDigits: 2 })} × KG` : '',
@@ -83,12 +80,7 @@ const weeks = computed(() => {
 </script>
 
 <template>
-  <div class="a-bar">
-    <h1>Körper</h1>
-    <div class="a-segments" role="group" aria-label="Zeitraum">
-      <button v-for="r in RANGES" :key="r.id" type="button" :aria-pressed="range === r.id" @click="range = r.id">{{ r.label }}</button>
-    </div>
-  </div>
+  <h1>Körper</h1>
 
   <div class="a-tiles">
     <div class="a-tile"><div class="a-label">Wochenschnitt aktuell</div><div class="a-value">{{ tiles.weekAvg }}</div><div class="a-label">{{ tiles.weekCount }}</div></div>
@@ -108,10 +100,11 @@ const weeks = computed(() => {
   <section class="a-card">
     <div class="a-bar" style="gap: 8px">
       <h2>Körpergewicht</h2>
-      <div class="a-legend">
-        <span><span class="a-dot" style="width: 8px; height: 8px; background: var(--a-neutral)"></span>Tageswert</span>
-        <span><span style="width: 18px; height: 3px; background: var(--a-chart); display: inline-block"></span>7-Tage-Schnitt</span>
-      </div>
+      <RangeButtons v-model="range" label="Zeitraum Körpergewicht" />
+    </div>
+    <div class="a-legend">
+      <span><span class="a-dot" style="width: 8px; height: 8px; background: var(--a-neutral)"></span>Tageswert</span>
+      <span><span style="width: 18px; height: 3px; background: var(--a-chart); display: inline-block"></span>7-Tage-Schnitt</span>
     </div>
     <LineChart
       :lines="[{ points: averageLine, color: 'var(--a-chart)' }]"

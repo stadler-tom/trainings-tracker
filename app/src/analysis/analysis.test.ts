@@ -87,3 +87,13 @@ describe('weeklySets', () => {
     expect(result.get('Brust')!.map((w) => w.deload)).toEqual([true, false]);
   });
 });
+
+describe('rangeStart', () => {
+  it('counts back from today, "Gesamt" starts at the first data', async () => {
+    const { rangeStart } = await import('./analysis');
+    expect(rangeStart('1w', '2026-11-18', '2025-01-01')).toBe('2026-11-12');
+    expect(rangeStart('1m', '2026-11-18', '2025-01-01')).toBe('2026-10-20');
+    expect(rangeStart('all', '2026-11-18', '2025-01-01')).toBe('2025-01-01');
+    expect(rangeStart('all', '2026-11-18', undefined)).toBe('2026-11-18');
+  });
+});

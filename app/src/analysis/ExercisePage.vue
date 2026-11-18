@@ -1,21 +1,19 @@
 <script setup lang="ts">
 // One exercise in detail: e1RM, record, last session, next training, charts and the last sessions.
 import { computed, ref } from 'vue';
-import { addDays, formatIsoDate, todayIso } from '../format';
+import { formatIsoDate, todayIso } from '../format';
 import { formatNumber } from '../training';
-import { nextTraining, oneDecimal, signed, STATUS_TEXT, type AnalysisData, type ExerciseStats } from './analysis';
+import { nextTraining, oneDecimal, rangeLabel, rangeStart, signed, STATUS_TEXT, type AnalysisData, type ChartRange, type ExerciseStats } from './analysis';
+import RangeButtons from './RangeButtons.vue';
 import LineChart, { type ChartMark } from './LineChart.vue';
 
 const props = defineProps<{ data: AnalysisData; stats: Map<string, ExerciseStats> }>();
 const selected = defineModel<string | null>('selected', { required: true });
 
-const RANGES = [
-  { id: '3m', label: '3 Mon.', days: 91 },
-  { id: '6m', label: '6 Mon.', days: 182 },
-  { id: '1y', label: '1 Jahr', days: 365 },
-  { id: 'all', label: 'Alles', days: null },
-] as const;
-const range = ref<(typeof RANGES)[number]['id']>('6m');
+// each chart has its own time range; the e1RM range also drives the tile "Veränderung"
+const range = ref<ChartRange>('6m');
+const volumeRange = ref<ChartRange>('6m');
+const today = todayIso();
 
 // dropdown: exercises grouped by muscle group (order of sheet "Muskelgruppen"), active ones or with data
 const groups = computed(() => {
@@ -39,12 +37,14 @@ const current = computed<ExerciseStats | null>(() => {
   return first ? props.stats.get(first.id) ?? null : null;
 });
 
-const from = computed(() => {
-  const days = RANGES.find((r) => r.id === range.value)!.days;
-  return days === null ? null : addDays(todayIso(), -days);
+const firstDate = computed(() => {
+  const s = current.value;
+  return [s?.sessions[0]?.date, s?.tests[0]?.date].filter(Boolean).sort()[0];
 });
-const shown = computed(() => (current.value?.regular ?? []).filter((s) => !from.value || s.date >= from.value));
-const shownTests = computed(() => (current.value?.tests ?? []).filter((t) => !from.value || t.date >= from.value));
+const from = computed(() => rangeStart(range.value, today, firstDate.value));
+const volumeFrom = computed(() => rangeStart(volumeRange.value, today, firstDate.value));
+const shown = computed(() => (current.value?.regular ?? []).filter((s) => s.date >= from.value));
+const shownTests = computed(() => (current.value?.tests ?? []).filter((t) => t.date >= from.value));
 
 const view = computed(() => {
   const s = current.value;
@@ -66,7 +66,8 @@ const view = computed(() => {
     test: bestTest ? `Getestet: ${formatNumber(bestTest.kg)} kg am ${formatIsoDate(bestTest.date).slice(0, 6)}` : '',
     change: change === null ? '–' : `${signed(change)} kg`,
     changeClass: change === null || Math.abs(change) < 0.05 ? '' : change > 0 ? 'a-good' : 'a-bad',
-    changePct: change !== null && first ? `${signed((change / first.e1rm) * 100)} % seit ${formatIsoDate(first.date)}` : '',
+    changePct: change !== null && first ? `${signed((change / first.e1rm) * 100)} % seit ${formatIsoDate(first.date)}` : 'zu wenig Einheiten im Zeitraum',
+    changeLabel: `Veränderung (${rangeLabel(range.value)})`,
     last: last ? `${formatNumber(last.kg)} kg × ${last.reps.join('/')}` : '–',
     lastDate: last ? formatIsoDate(last.date) : '',
     next: nextTraining(s),
@@ -78,16 +79,16 @@ const chartMarks = computed<ChartMark[]>(() => [
   ...shownTests.value.map((t) => ({ date: t.date, value: t.kg, shape: 'square' as const, color: 'var(--a-text)' })),
 ]);
 
-// volume bars of the shown sessions, the newest one highlighted
+// volume bars of the sessions in the volume range (deload included), the newest one highlighted
 const bars = computed(() => {
-  const list = shown.value;
+  const list = (current.value?.sessions ?? []).filter((x) => x.date >= volumeFrom.value);
   if (!list.length) return null;
   const max = Math.max(...list.map((x) => x.volume), 1);
-  const w = 600 / list.length;
-  return list.map((x, i) => {
-    const h = (170 * x.volume) / max;
-    return { x: i * w + w * 0.15, y: 180 - h, w: w * 0.7, h, last: i === list.length - 1, title: `${formatIsoDate(x.date)}: ${Math.round(x.volume).toLocaleString('de-DE')} kg` };
-  });
+  return list.map((x, i) => ({
+    height: `${((100 * x.volume) / max).toFixed(1)}%`,
+    last: i === list.length - 1,
+    title: `${formatIsoDate(x.date)}: ${Math.round(x.volume).toLocaleString('de-DE')} kg${x.deload ? ' (Deload)' : ''}`,
+  }));
 });
 
 // last 6 entries: sessions incl. deload and 1RM tests, newest first
@@ -106,7 +107,7 @@ const rows = computed(() => {
 </script>
 
 <template>
-  <div class="a-bar" style="align-items: flex-end">
+  <div class="a-bar" style="align-items: flex-end; justify-content: flex-start">
     <label class="a-field">
       <span class="a-label">Übung</span>
       <select class="a-select" :value="current?.exercise.id" @change="selected = ($event.target as HTMLSelectElement).value">
@@ -115,9 +116,6 @@ const rows = computed(() => {
         </optgroup>
       </select>
     </label>
-    <div class="a-segments" role="group" aria-label="Zeitraum">
-      <button v-for="r in RANGES" :key="r.id" type="button" :aria-pressed="range === r.id" @click="range = r.id">{{ r.label }}</button>
-    </div>
   </div>
 
   <template v-if="view && current">
@@ -136,7 +134,7 @@ const rows = computed(() => {
         <div v-if="view.test" class="a-label" style="color: var(--a-text); font-weight: 600">{{ view.test }}</div>
       </div>
       <div class="a-tile">
-        <div class="a-label">Veränderung im Zeitraum</div>
+        <div class="a-label">{{ view.changeLabel }}</div>
         <div class="a-value" :class="view.changeClass">{{ view.change }}</div>
         <div class="a-label">{{ view.changePct }}</div>
       </div>
@@ -155,31 +153,34 @@ const rows = computed(() => {
     <section class="a-card">
       <div class="a-bar" style="gap: 8px">
         <h2>Verlauf errechnetes e1RM</h2>
-        <div class="a-legend">
-          <span><span style="width: 18px; height: 3px; background: var(--a-chart); display: inline-block"></span>e1RM je Einheit</span>
-          <span><span class="a-dot" style="width: 10px; height: 10px; background: var(--a-record)"></span>neuer Rekord</span>
-          <span><span style="width: 10px; height: 10px; background: var(--a-text); display: inline-block"></span>1RM-Test (gehoben)</span>
-        </div>
+        <RangeButtons v-model="range" label="Zeitraum e1RM-Verlauf" />
+      </div>
+      <div class="a-legend">
+        <span><span style="width: 18px; height: 3px; background: var(--a-chart); display: inline-block"></span>e1RM je Einheit</span>
+        <span><span class="a-dot" style="width: 10px; height: 10px; background: var(--a-record)"></span>neuer Rekord</span>
+        <span><span style="width: 10px; height: 10px; background: var(--a-text); display: inline-block"></span>1RM-Test (gehoben)</span>
       </div>
       <LineChart
-        :lines="[{ points: shown.map((x) => ({ date: x.date, value: x.e1rm })), color: 'var(--a-chart)' }]"
+        :lines="[{ points: shown.map((x) => ({ date: x.date, value: x.e1rm })), color: 'var(--a-chart)', dots: true }]"
         :marks="chartMarks"
-        :from="from ?? undefined"
-        :to="from ? todayIso() : undefined"
+        :from="from"
+        :to="today"
         label="Linienchart errechnetes e1RM je Einheit"
       />
     </section>
 
     <div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: stretch">
       <section class="a-card" style="flex: 1 1 420px; min-width: 0">
-        <h2>Volumen je Einheit (kg × Wdh)</h2>
-        <svg v-if="bars" viewBox="0 0 600 200" role="img" aria-label="Säulenchart Volumen je Einheit" style="width: 100%; height: auto; display: block">
-          <line x1="0" x2="600" y1="180" y2="180" stroke="var(--a-line)" />
-          <rect v-for="(b, i) in bars" :key="i" :x="b.x" :y="b.y" :width="b.w" :height="b.h" :fill="b.last ? 'var(--a-chart)' : 'var(--a-neutral)'">
-            <title>{{ b.title }}</title>
-          </rect>
-        </svg>
-        <p v-else class="a-note">Noch keine Einheit in diesem Zeitraum.</p>
+        <div class="a-bar" style="gap: 8px">
+          <h2>Volumen je Einheit (kg × Wdh)</h2>
+          <RangeButtons v-model="volumeRange" label="Zeitraum Volumen" />
+        </div>
+        <div v-if="bars" role="img" aria-label="Säulenchart Volumen je Einheit"
+          style="height: 180px; display: flex; align-items: flex-end; gap: 4px; border-bottom: 1px solid var(--a-line)">
+          <div v-for="(b, i) in bars" :key="i" :title="b.title"
+            :style="{ flex: '1 1 0', maxWidth: '48px', height: b.height, background: b.last ? 'var(--a-chart)' : 'var(--a-neutral)', borderRadius: '3px 3px 0 0' }"></div>
+        </div>
+        <p v-else class="a-note">Keine Einheit in diesem Zeitraum.</p>
       </section>
       <section class="a-card" style="flex: 1 1 420px; min-width: 0">
         <h2>Letzte Einheiten</h2>
