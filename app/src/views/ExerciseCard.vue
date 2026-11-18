@@ -189,8 +189,8 @@ function finishNote() {
 </template>
 
 <style scoped>
-.exercise.invalid { outline: 2px solid var(--accent); outline-offset: -2px; }
-.invalid input { border-color: var(--accent); border-width: 2px; }
+.exercise.invalid { outline: 2px solid var(--error); outline-offset: -2px; }
+.invalid input { border-color: var(--error); border-width: 2px; }
 .title { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
 .title h2 { padding-top: 10px; overflow-wrap: anywhere; }
 .order { display: flex; gap: 4px; flex-shrink: 0; }

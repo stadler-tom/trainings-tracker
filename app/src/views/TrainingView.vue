@@ -305,7 +305,7 @@ function discard() {
 .head .row { display: flex; gap: 12px; align-items: flex-end; }
 .date { flex: 1; }
 .date input { width: 100%; }
-.date.invalid input { border-color: var(--accent); border-width: 2px; }
+.date.invalid input { border-color: var(--error); border-width: 2px; }
 .check { flex-direction: row; align-items: center; gap: 10px; min-height: 44px; color: var(--text); font-size: 1rem; }
 .check input { width: 24px; height: 24px; min-height: 0; }
 select { font: inherit; font-size: 16px; min-height: 44px; border-radius: 10px; padding: 0 8px; color: var(--text); background: var(--bg); }
