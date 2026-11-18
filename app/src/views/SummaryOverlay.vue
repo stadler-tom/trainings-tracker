@@ -33,8 +33,8 @@ const fun = funComparison(props.summary.volume);   // picked once per summary
           <strong>1RM</strong>
         </div>
         <div v-for="set in exercise.sets" :key="set.set" class="row" :class="{ pr: set.isPr }">
-          <span><span class="nr">{{ set.set }}</span>{{ formatNumber(set.kg) }} kg × {{ set.reps }}<span v-if="set.isPr"> 🏆</span></span>
-          <span class="muted">{{ Math.round(set.e1rm) }}</span>
+          <span><span class="nr">{{ set.set }}</span>{{ formatNumber(set.kg) }} kg × {{ set.reps }}<span v-if="set.test"> · 1RM-Test</span><span v-if="set.isPr"> 🏆</span></span>
+          <span class="muted">{{ set.test ? formatNumber(set.kg) : Math.round(set.e1rm) }}</span>
         </div>
       </div>
 

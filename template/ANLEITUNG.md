@@ -6,7 +6,7 @@ Am Ende hast du:
 
 - ein eigenes Google Sheet als Datenbank (nur du siehst deine Daten),
 - die App auf dem Home-Bildschirm deines iPhones,
-- optional die Excel-Auswertung am PC.
+- die Auswertung am PC als Lesezeichen.
 
 Die Schritte 1 bis 5 machst du am PC, Schritt 6 und 7 am iPhone.
 
@@ -60,10 +60,11 @@ Zurück im Tab mit dem Script-Editor:
 
 1. Im Script-Editor die Funktion **showSetupLink** wählen und **Ausführen** klicken.
 2. Wechsle zum Tab mit deinem Sheet. Dort fragt ein Fenster nach der Web-App-Adresse: die kopierte URL aus Schritt 4 einfügen, **OK**.
-3. Das Fenster zeigt jetzt deinen **Einrichtungslink**. Ihn komplett markieren und kopieren.
+3. Das Fenster zeigt jetzt zwei Links. Den ersten (**App (Handy)**) komplett markieren und kopieren.
 4. Schick dir den Link aufs iPhone, zum Beispiel per Mail an dich selbst oder in die Notizen-App.
+5. Den zweiten Link (**PC-Auswertung**) am PC als Lesezeichen anlegen, siehe [Auswertung](#auswertung).
 
-> Der Link enthält deinen Schlüssel. Nicht weitergeben und nicht in Gruppen posten.
+> Beide Links enthalten deinen Schlüssel. Nicht weitergeben und nicht in Gruppen posten.
 >
 > Den Link kannst du jederzeit wieder mit showSetupLink anzeigen. Die Adresse ist dann schon gespeichert.
 
@@ -104,6 +105,7 @@ Wichtig: Den Link in den Einstellungen der App einfügen, nicht in Safari öffne
 - **Satz eintragen:** Feld antippen, Zahl eingeben. Oder **+ / −** benutzen. Ein leeres Feld heißt: Satz nicht gemacht.
 - **Gerätenotiz** (z. B. „Sitz 4“) antippen und eintragen. Sie gilt für alle Trainingstage.
 - **Scheiben & Aufwärmen** zeigt bei Langhantel-Übungen, welche Scheiben auf jede Seite gehören, und schlägt Aufwärmsätze vor.
+- **1RM-Test (Maximalversuch):** Haken setzen, Gewicht eintragen. Der Versuch zählt mit 1 Wdh als getestetes 1RM und hat keinen Einfluss auf Ziel, Rekorde und Progression.
 - **Training speichern** am Ende. Ein Tag kann pro Datum nur einmal gespeichert werden.
 - Schließt sich die App zwischendurch, sind beim nächsten Öffnen alle Eingaben noch da.
 
@@ -117,16 +119,22 @@ Wichtig: Den Link in den Einstellungen der App einfügen, nicht in Safari öffne
   - Den Namen einer Übung änderst du nur hier, Tagesblätter und App übernehmen ihn. Die **ID** nie ändern: Über sie hängen Verlauf und Tagesauswahl an der Übung.
   - **Gewichtssprung:** Schritt der +/−-Knöpfe, z. B. 2,5 bei Kurzhanteln, 1,25 am Kabel, 5 an Maschinen.
   - **Stangengewicht kg:** aktiviert den Scheibenrechner, z. B. 20 bei der Langhantel, 0 bei der Multipresse (nur Scheiben). Leer = kein Scheibenrechner.
-- **Log:** alle gespeicherten Sätze. Korrekturen direkt hier.
+- **Muskelgruppen:** jede Gruppe genau einmal, mit **Sätze/Woche Min** und **Max** als Ziel für die Seite Volumen. Im Blatt Übungen wählst du die Gruppe aus einer Liste.
+  - **Umbenennen:** nur hier. Die Übungen ziehen automatisch nach. **Neue Gruppe:** neue Zeile, die (ausgeblendete) Spalte ID bleibt leer.
+- **Log:** alle gespeicherten Sätze. Korrekturen direkt hier. Spalte **1RM-Test**: 1 = echter Maximalversuch.
 - **Körper:** Gewicht und Bauchumfang trägst du direkt im Sheet ein (Google-Sheets-App).
 
 ## Auswertung
 
-Es gibt die Auswertung in zwei Formen, mit demselben Inhalt:
-- **Google Sheets** (live, auch auf dem Handy): Anleitung [AUSWERTUNG-GOOGLE.md](AUSWERTUNG-GOOGLE.md), Teil B. Den Vorlage-Link bekommst du von Tom.
-- **Excel** (am PC): siehe unten.
+Die Auswertung ist eine eigene Seite der App für den PC: Übersicht aller Übungen, Verlauf je Übung, Volumen je Muskelgruppe und Körper. Sie liest nur und ändert nichts im Sheet.
 
-## Excel-Auswertung (optional, am PC)
+1. Im Script-Editor **showSetupLink** ausführen (siehe Schritt 5).
+2. Den zweiten Link (**PC-Auswertung**) kopieren und im Browser als **Lesezeichen** anlegen.
+3. Lesezeichen öffnen. Mit synchronisierten Lesezeichen (Chrome, Edge, Firefox) geht es danach auf jedem PC ohne weiteren Schritt.
+
+Unten links wählst du das Farbschema. Nach einem Training **Neu laden** klicken.
+
+## Excel-Auswertung (alt, wird nicht mehr gepflegt)
 
 1. Lade die Datei [Trainings-Auswertung.xlsx](Trainings-Auswertung.xlsx) herunter (auf der Seite **Download** bzw. „Download raw file“).
 2. In deinem Google Sheet am PC: **Datei → Freigeben → Im Web veröffentlichen**.

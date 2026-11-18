@@ -60,7 +60,7 @@ function create() {
   ss.setSpreadsheetTimeZone('Europe/Berlin');
   ss.rename('Trainings-Tracker');
   const oldSheets = ss.getSheets();
-  [SHEET.help, EXAMPLE_DAY, SHEET.body, SHEET.exercises, SHEET.log, SHEET.lists]
+  [SHEET.help, EXAMPLE_DAY, SHEET.body, SHEET.exercises, SHEET.muscleGroups, SHEET.log, SHEET.lists]
     .forEach(function (name) { ss.insertSheet(name); });
   oldSheets.forEach(function (s) { ss.deleteSheet(s); });
 
@@ -72,6 +72,8 @@ function create() {
     if (row[EX.id] in EXAMPLE_BAR_WEIGHTS) exerciseSheet.getRange(i + 2, extra.barWeight).setValue(EXAMPLE_BAR_WEIGHTS[row[EX.id]]);
   });
   ss.getSheetByName(SHEET.lists).hideSheet();
+  ensureMuscleGroups_(ss);                    // sheet "Muskelgruppen" from the example exercises (since 1.7.0)
+  applyMuscleGroupDropdown_(ss);
   refreshExerciseList_(ss);
   buildLogSheet_(ss);
   buildBodySheet_(ss);
@@ -213,20 +215,21 @@ function buildHelpSheet_(ss) {
     ['  Reihenfolge in der App = Reihenfolge der Reiter. Löschen: Reiter löschen (das Log bleibt).'],
     ['Übungen: Übungsstamm. Neue Übung = neue Zeile mit neuer ID. Nie löschen, nur Aktiv = nein.'],
     ['Gewichtssprung: Schritt für die +/−-Knöpfe in der App. Stangengewicht: aktiviert den Scheibenrechner (0 = ohne Stange).'],
-    ['Log: alle gespeicherten Sätze. Korrekturen direkt hier.'],
+    ['Muskelgruppen: jede Gruppe genau einmal, mit Ziel-Sätzen pro Woche. Im Blatt Übungen wird die Gruppe per Auswahl gewählt.'],
+    ['  Umbenennen hier: die Übungen ziehen automatisch nach. Neue Gruppe: neue Zeile (Spalte ID bleibt leer).'],
+    ['Log: alle gespeicherten Sätze. Korrekturen direkt hier. Spalte 1RM-Test: 1 = echter Maximalversuch.'],
     ['Körper: Gewicht morgens nüchtern, Bauchumfang wöchentlich.'],
     ['Tagesblätter: Übungsauswahl je Trainingstag. Die App liest und schreibt sie; Eingabe direkt im Sheet ist ebenfalls möglich.'],
     ['  Übungsnamen nur im Blatt Übungen ändern, die Tagesblätter übernehmen ihn automatisch.'],
     [''],
-    ['EXCEL-AUSWERTUNG'],
-    ['Excel-Datei: template/Trainings-Auswertung.xlsx im Repository (Link oben) herunterladen.'],
-    ['Datei → Freigeben → Im Web veröffentlichen → je Blatt Log, Übungen und Körper als CSV veröffentlichen'],
-    ['und die drei Links in der Excel-Datei im Blatt Einstellungen eintragen.']
+    ['PC-AUSWERTUNG'],
+    ['https://stadler-tom.github.io/trainings-tracker/auswertung/ – den Link dafür zeigt die Funktion showSetupLink im Script-Editor.'],
+    ['Als Lesezeichen anlegen; mit synchronisierten Lesezeichen geht sie auf jedem PC.']
   ];
   sheet.getRange(1, 1, lines.length, 1).setValues(lines);
   sheet.setColumnWidth(1, 900);
   sheet.getRange('A1').setFontSize(14).setFontWeight('bold');
-  [7, 18].forEach(function (row) { sheet.getRange(row, 1).setFontWeight('bold'); });
+  [7, 20].forEach(function (row) { sheet.getRange(row, 1).setFontWeight('bold'); });
   sheet.setHiddenGridlines(true);
 }
 

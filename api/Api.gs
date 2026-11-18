@@ -13,8 +13,9 @@
  * Error codes are English; the app shows German messages.
  */
 
-const API_VERSION = '1.6.1';   // 1.6.1: no action removes anything from the log any more
+const API_VERSION = '1.7.0';   // 1.7.0: muscle groups sheet, 1RM tests, getAnalysis for the PC analysis
 const APP_URL = 'https://stadler-tom.github.io/trainings-tracker/';
+const ANALYSIS_URL = APP_URL + 'auswertung/';
 const KEY_PROPERTY = 'API_KEY';
 const RECENT_DATES = 4;                 // trainings per day sent for the "today" hint
 const CLIENT_IDS_PROPERTY = 'SAVED_CLIENT_IDS';
@@ -64,6 +65,7 @@ function handle_(action, key, payload) {
       case 'updateDaySlots': return withLock_(function () { return updateDaySlots_(payload); });
       case 'updateExerciseNote': return withLock_(function () { return updateExerciseNote_(payload); });
       case 'getTraining': return getTraining_(payload);
+      case 'getAnalysis': return { ok: true, data: getAnalysis_() };
       case 'saveBody': return withLock_(function () { return saveBody_(payload); });
       default: return { ok: false, error: 'unknown_action' };
     }
@@ -87,6 +89,9 @@ function setupApi() {
   }
   ensureExerciseColumns_(ss);
   ensureSettings_(ss);
+  ensureLogTestColumn_(ss);
+  const groups = withLock_(function () { return { ok: true, data: ensureMuscleGroups_(ss) }; }).data;
+  if (!groups.variants.length) applyMuscleGroupDropdown_(ss);
   refreshExerciseList_(ss);
   const ctx = loadContext_(ss);
   const days = daySheets_(ss);
@@ -94,9 +99,15 @@ function setupApi() {
   withLock_(function () { return syncDayNames_(ss); });
   const names = days.map(function (sheet) { return sheet.getName(); });
   Logger.log('Setup done. Day sheets: ' + (names.length ? names.join(', ') : 'none'));
+  const groupText = groups.variants.length
+    ? 'ACHTUNG Muskelgruppen: Diese Schreibweisen meinen vermutlich dieselbe Gruppe: ' +
+      groups.variants.map(function (v) { return v.map(function (n) { return '„' + n + '“'; }).join(' / '); }).join('; ') +
+      '. Bitte im Blatt Übungen auf eine Schreibweise vereinheitlichen, die übrige Zeile im Blatt Muskelgruppen leeren ' +
+      'und die Einrichtung erneut ausführen. Erst dann kommt das Auswahlfeld. '
+    : (groups.added.length ? 'Muskelgruppen übernommen: ' + groups.added.join(', ') + '. Ziel-Sätze pro Woche bitte im Blatt Muskelgruppen eintragen. ' : '');
   SpreadsheetApp.getUi().alert('Einrichtung', 'Fertig. ' +
     (names.length ? 'Trainingstage: ' + names.join(', ') + '. '
-      : 'Es gibt noch kein Tagesblatt: ein Tagesblatt duplizieren oder die Vorlage neu kopieren. ') +
+      : 'Es gibt noch kein Tagesblatt: ein Tagesblatt duplizieren oder die Vorlage neu kopieren. ') + groupText +
     'Nächster Schritt laut Anleitung: Bereitstellen → Neue Bereitstellung → Web-App.',
     SpreadsheetApp.getUi().ButtonSet.OK);
 }
@@ -136,10 +147,13 @@ function showSetupLink() {
     }
     properties.setProperty(WEB_APP_URL_PROPERTY, url);
   }
-  const link = APP_URL + '#api=' + encodeURIComponent(url) + '&key=' + key;
-  Logger.log(link);
-  ui.alert('Einrichtungslink', 'Diesen Link aufs Handy schicken und in der App unter Einstellungen einfügen. ' +
-    'Er enthält deinen Schlüssel, bitte nicht weitergeben.\n\n' + link, ui.ButtonSet.OK);
+  const hash = '#api=' + encodeURIComponent(url) + '&key=' + key;
+  Logger.log(APP_URL + hash);
+  Logger.log(ANALYSIS_URL + hash);
+  ui.alert('Einrichtungslink', 'Beide Links enthalten deinen Schlüssel, bitte nicht weitergeben.\n\n' +
+    'App (Handy): aufs Handy schicken und in der App unter Einstellungen einfügen.\n' + APP_URL + hash + '\n\n' +
+    'PC-Auswertung: am PC als Lesezeichen anlegen. Mit synchronisierten Lesezeichen geht es auf jedem Gerät.\n' +
+    ANALYSIS_URL + hash, ui.ButtonSet.OK);
 }
 
 function isWebAppUrl_(url) {
@@ -172,7 +186,7 @@ function buildState_(ss, daySheets, exercises, logRows, extras) {
   exercises.forEach(function (ex) { idByName[ex.name] = ex.id; weightTypeById[ex.id] = ex.weightType; });
   const bodyWeightAt = bodyWeightLookup_(extras.body);
 
-  const history = {};          // id -> { lastSession, bestE1rm, bestRepsAtZero, recentE1rm }
+  const history = {};          // id -> { lastSession, bestE1rm, bestRepsAtZero, recentE1rm, bestTest }
   const datesByDay = {};       // day -> { 'yyyy-MM-dd': true }
   const deloadByDate = {};     // 'yyyy-MM-dd' -> true if that training was a deload
   const e1rmByDate = {};       // id -> { 'yyyy-MM-dd': best e1RM of that session }
@@ -189,10 +203,15 @@ function buildState_(ss, daySheets, exercises, logRows, extras) {
       const t = trainings[key] || (trainings[key] = { date: dateKey, day: day, deload: false, sets: 0, volume: 0, ids: {} });
       t.deload = t.deload || deload;
       t.sets++;
-      t.volume += kg * reps;
+      if (!isTestRow_(r)) t.volume += kg * reps;
       t.ids[id] = true;
     }
     deloadByDate[dateKey] = deloadByDate[dateKey] === true || deload;
+    if (isTestRow_(r)) {                       // 1RM test (since 1.7.0): only its own best, no progression
+      const ht = history[id] || (history[id] = { lastSession: null, bestE1rm: 0, bestRepsAtZero: 0 });
+      if (!ht.bestTest || kg > ht.bestTest.kg) ht.bestTest = { kg: kg, date: dateKey };
+      return;
+    }
     if (deload) return;
 
     const value = e1rmOf_(kg, reps, weightTypeById[id] === VALUE.addedWeight ? bodyWeightAt(dateKey) : null);
@@ -208,6 +227,7 @@ function buildState_(ss, daySheets, exercises, logRows, extras) {
   Object.keys(history).forEach(function (id) {
     const s = history[id].lastSession;
     if (s) s.sets.sort(function (a, b) { return a.set - b.set; });
+    if (!history[id].bestTest) history[id].bestTest = null;   // bestTest (since 1.7.0): best 1RM test { kg, date }
     // recentE1rm (since 1.5.0): best e1RM of the last sessions without deload, oldest first
     const byDate = e1rmByDate[id] || {};
     history[id].recentE1rm = Object.keys(byDate).sort().slice(-RECENT_E1RM_SESSIONS)
@@ -262,7 +282,8 @@ function bodyWeightLookup_(body) {
 /**
  * Saves one training from the app (section 4.3). Payload:
  * { clientId, day, date: 'yyyy-MM-dd', deload, note,
- *   exercises: [{ id, kg, reps: [n|null, n|null, n|null, n|null], failure }] }
+ *   exercises: [{ id, kg, reps: [n|null, n|null, n|null, n|null], failure, test }] }
+ * test (since 1.7.0): a 1RM test, exactly one set with 1 rep; logged with "1RM-Test" = 1.
  * The log is append-only: the app never changes or removes saved rows (corrections only by hand in the sheet).
  */
 function saveTrainingFromApp_(p) {
@@ -294,9 +315,12 @@ function saveTrainingFromApp_(p) {
     if (!sets.length) continue;                                   // no sets = exercise not done
     if (typeof item.kg !== 'number' || !(item.kg >= 0)) return { ok: false, error: 'missing_weight', detail: ex.name };
     if (sets.some(function (s) { return !(s.reps > 0); })) return { ok: false, error: 'invalid_reps', detail: ex.name };
+    const isTest = item.test === true;
+    if (isTest && (sets.length !== 1 || sets[0].reps !== 1)) return { ok: false, error: 'invalid_test', detail: ex.name };
     sets.forEach(function (s, index) {
       rows.push([date, day, ex.id, ex.name, ex.muscleGroup, s.no, item.kg, s.reps,
-        item.failure === true && index === sets.length - 1, p.deload === true, now, String(p.note || '')]);
+        !isTest && item.failure === true && index === sets.length - 1, p.deload === true, now, String(p.note || ''),
+        isTest ? 1 : '']);
     });
   }
   if (!rows.length) return { ok: false, error: 'nothing_to_save' };
@@ -307,7 +331,10 @@ function saveTrainingFromApp_(p) {
   if (logRows.some(function (r) { return isTrainingRow_(r, dateText, day, tz); })) return { ok: false, error: 'already_saved' };
 
   const allRows = logRows.concat(rows);
-  ss.getSheetByName(SHEET.log).getRange(logRows.length + 2, 1, rows.length, LOG_HEADER.length).setValues(rows);
+  if (rows.some(isTestRow_)) ensureLogTestColumn_(ss);     // a log from before 1.7.0 gets the column on the first test
+  const width = rows.some(isTestRow_) ? LOG_HEADER.length : LOG_HEADER.length - 1;   // never write column M otherwise
+  ss.getSheetByName(SHEET.log).getRange(logRows.length + 2, 1, rows.length, width)
+    .setValues(rows.map(function (row) { return row.slice(0, width); }));
   rememberClientId_(p.clientId);
   refreshAllInfo_(ss, loadContext_(ss, allRows), daySheets);   // keeps the info rows of the sheet input in sync
   // state (since 1.4.0): the app needs no second request to show the new "zuletzt" and targets
@@ -355,6 +382,7 @@ function updateExerciseNote_(p) {
 /**
  * One training with all sets, for the summary in the history (since 1.6.0). Payload: { date, day }
  * A set is marked as record if it is the best set of its exercise and beats all earlier trainings.
+ * 1RM tests (since 1.7.0) carry test: true and count as record if they beat all earlier tests.
  */
 function getTraining_(p) {
   const ss = SpreadsheetApp.getActive();
@@ -363,7 +391,7 @@ function getTraining_(p) {
   const byId = {};
   exercises.forEach(function (ex) { byId[ex.id] = ex; });
   const bodyWeightAt = bodyWeightLookup_(readBody_(ss));
-  const best = {};           // id -> { e1rm, repsAtZero } of trainings before this one
+  const best = {};           // id -> { e1rm, repsAtZero, testKg } of trainings before this one
   const result = { date: String(p.date), day: String(p.day), deload: false, note: '', exercises: [] };
   const exerciseById = {};
   readLog_(ss).forEach(function (r) {
@@ -380,21 +408,33 @@ function getTraining_(p) {
         ex = exerciseById[id] = { id: String(id), name: byId[id] ? byId[id].name : String(r[LOG.exercise]), sets: [] };
         result.exercises.push(ex);
       }
+      const isTest = isTestRow_(r);
       ex.sets.push({ set: Number(r[LOG.set]), kg: kg, reps: reps, failure: r[LOG.failure] === true,
-        e1rm: Math.round(value * 10) / 10, isPr: false });
-    } else if (dateKey < result.date && r[LOG.deload] !== true) {
-      const b = best[id] || (best[id] = { e1rm: 0, repsAtZero: 0 });
-      b.e1rm = Math.max(b.e1rm, value);
-      if (kg === 0) b.repsAtZero = Math.max(b.repsAtZero, reps);
+        e1rm: isTest ? kg : Math.round(value * 10) / 10, isPr: false, test: isTest });
+    } else if (dateKey < result.date) {
+      const b = best[id] || (best[id] = { e1rm: 0, repsAtZero: 0, testKg: null });
+      if (isTestRow_(r)) {
+        b.testKg = Math.max(b.testKg || 0, kg);
+      } else if (r[LOG.deload] !== true) {
+        b.e1rm = Math.max(b.e1rm, value);
+        if (kg === 0) b.repsAtZero = Math.max(b.repsAtZero, reps);
+      }
     }
   });
   if (!result.exercises.length) return { ok: false, error: 'unknown_training' };
+  result.exercises.forEach(function (ex) {
+    ex.sets.sort(function (a, b) { return a.set - b.set; });
+    ex.sets.filter(function (s) { return s.test; }).forEach(function (s) {   // new best 1RM test, also in a deload week
+      const before = best[ex.id] && best[ex.id].testKg;
+      s.isPr = !before || s.kg > before;
+    });
+  });
   if (!result.deload) {
     result.exercises.forEach(function (ex) {
-      ex.sets.sort(function (a, b) { return a.set - b.set; });
       const b = best[ex.id];
-      if (!b) return;                                       // first training of this exercise: no record
-      const top = ex.sets.reduce(function (x, y) { return y.e1rm > x.e1rm || (y.e1rm === x.e1rm && y.reps > x.reps) ? y : x; });
+      const regular = ex.sets.filter(function (s) { return !s.test; });
+      if (!b || !b.e1rm && !b.repsAtZero || !regular.length) return;   // first training of this exercise: no record
+      const top = regular.reduce(function (x, y) { return y.e1rm > x.e1rm || (y.e1rm === x.e1rm && y.reps > x.reps) ? y : x; });
       const beatsE1rm = top.e1rm > Math.round(b.e1rm * 10) / 10;
       const beatsReps = top.kg === 0 && top.e1rm === 0 && top.reps > b.repsAtZero;
       top.isPr = beatsE1rm || beatsReps;
@@ -435,6 +475,55 @@ function saveBody_(p) {
   }
   Object.keys(values).forEach(function (key) { sheet.getRange(row, BODY[key] + 1).setValue(values[key]); });
   return { ok: true, data: { body: readBody_(ss) } };
+}
+
+/**
+ * Everything the PC analysis needs in one read-only answer (since 1.7.0). Writes nothing
+ * except that a renamed muscle group is followed first, like getState does for days.
+ * log: one entry per set, oldest first: [date 'yyyy-MM-dd', day, exercise ID, set, kg, reps, failure, deload, test]
+ */
+function getAnalysis_() {
+  const ss = SpreadsheetApp.getActive();
+  const tz = ss.getSpreadsheetTimeZone();
+  const days = daySheets_(ss);
+  if (dayNamesChanged_(days)) withLock_(function () { return syncDayNames_(ss, days); });
+  if (muscleGroupsChanged_(ss)) withLock_(function () { syncMuscleGroups_(ss); return { ok: true }; });
+  const exercises = readExerciseRows_(ss);
+  const idByName = {};
+  exercises.forEach(function (ex) { idByName[ex.name] = ex.id; });
+  const log = [];
+  readLog_(ss).forEach(function (r) {
+    const date = r[LOG.date], id = r[LOG.exerciseId], kg = r[LOG.kg], reps = r[LOG.reps];
+    if (!(date instanceof Date) || !id || typeof kg !== 'number' || typeof reps !== 'number') return;
+    log.push([Utilities.formatDate(date, tz, 'yyyy-MM-dd'), String(r[LOG.day] || ''), String(id), Number(r[LOG.set]) || 1,
+      kg, reps, r[LOG.failure] === true, r[LOG.deload] === true, isTestRow_(r)]);
+  });
+  log.sort(function (a, b) { return a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : a[3] - b[3]; });
+  return {
+    apiVersion: API_VERSION,
+    days: days.map(function (sheet) {                // tab order, with the exercises of each day sheet
+      return { name: sheet.getName(), exerciseIds: readSlots_(sheet, { idByName: idByName }).map(function (slot) { return slot.id; }).filter(Boolean) };
+    }),
+    exercises: exercises,
+    muscleGroups: readMuscleGroups_(ss),
+    log: log,
+    body: readBody_(ss),
+    settings: readSettings_(ss),
+  };
+}
+
+/** true if a muscle group was renamed, added or has no ID since the last syncMuscleGroups_ (one read, no lock). */
+function muscleGroupsChanged_(ss) {
+  const sheet = ss.getSheetByName(SHEET.muscleGroups);
+  if (!sheet) return false;
+  const current = {};
+  let missingId = false;
+  muscleGroupValues_(sheet).forEach(function (r) {
+    if (String(r[MG.name]).trim() === '') return;
+    if (!r[MG.id]) missingId = true;
+    current[String(r[MG.id])] = String(r[MG.name]);
+  });
+  return missingId || PropertiesService.getScriptProperties().getProperty(MUSCLE_GROUP_NAMES_PROPERTY) !== JSON.stringify(current);
 }
 
 // ===== Helpers =================================================================

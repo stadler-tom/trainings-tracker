@@ -82,7 +82,7 @@ export function lastText(history: ExerciseHistory | undefined): string | null {
 
 export interface RecordResult {
   isRecord: boolean;
-  kind: 'e1rm' | 'bodyweightReps' | null;   // only an e1RM record shows the record picture
+  kind: 'e1rm' | 'bodyweightReps' | 'test' | null;   // e1RM records and new 1RM tests show the record picture
   text: string;                    // e.g. "Neuer Rekord: 45 kg × 8 (e1RM +2,3 kg)"
 }
 
@@ -130,6 +130,20 @@ export function checkRecord(
     };
   }
   return none;
+}
+
+/**
+ * A 1RM test is a record if it beats every earlier test of the exercise; the first test counts too
+ * (requirements spec "PC-Auswertung", 1RM-Test). Tests never count against e1RM records.
+ */
+export function checkTestRecord(history: ExerciseHistory | undefined, kg: number): RecordResult {
+  if (!(kg > 0)) return { isRecord: false, kind: null, text: '' };
+  const best = history?.bestTest?.kg ?? null;
+  if (best === null) return { isRecord: true, kind: 'test', text: `Neues 1RM: ${formatNumber(kg)} kg (erster Test)` };
+  if (kg > best + EPSILON) {
+    return { isRecord: true, kind: 'test', text: `Neues 1RM: ${formatNumber(kg)} kg (+${formatNumber(Math.round((kg - best) * 100) / 100)} kg)` };
+  }
+  return { isRecord: false, kind: null, text: '' };
 }
 
 export interface PlateLoad {

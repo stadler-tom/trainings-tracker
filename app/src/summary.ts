@@ -3,14 +3,15 @@
 
 import type { SavePayload, State, TrainingDetail } from './api';
 import { latestBodyWeight } from './body';
-import { checkRecord, e1rm, formatNumber } from './training';
+import { checkRecord, checkTestRecord, e1rm, formatNumber } from './training';
 
 export interface SummarySet {
   set: number;
   kg: number;
   reps: number;
-  e1rm: number;
+  e1rm: number;                    // for a 1RM test the lifted weight
   isPr: boolean;
+  test?: boolean;
 }
 
 export interface SummaryExercise {
@@ -37,6 +38,12 @@ export function buildSummary(payload: SavePayload, before: State | null): Summar
     const exercise = before?.exercises.find((e) => e.id === item.id);
     const history = before?.history[item.id];
     const kg = item.kg ?? 0;
+    if (item.test) {                     // 1RM test: no volume, its own record rule
+      const isPr = checkTestRecord(history, kg).isRecord;
+      if (isPr) prCount++;
+      exercises.push({ name: exercise?.name ?? item.id, sets: [{ set: 1, kg, reps: 1, e1rm: kg, isPr, test: true }] });
+      continue;
+    }
     // added weight (pull-ups): the 1RM includes the body weight, like the record check
     const load = exercise?.weightType === 'Zusatzgewicht' && bodyWeight ? kg + bodyWeight : kg;
     const sets: SummarySet[] = [];
@@ -65,9 +72,9 @@ export function summaryFromDetail(detail: TrainingDetail): Summary {
   let prCount = 0;
   const exercises = detail.exercises.map((exercise) => {
     const sets = exercise.sets.map((set) => {
-      volume += set.kg * set.reps;
+      if (!set.test) volume += set.kg * set.reps;
       if (set.isPr) prCount++;
-      return { set: set.set, kg: set.kg, reps: set.reps, e1rm: set.e1rm, isPr: set.isPr };
+      return { set: set.set, kg: set.kg, reps: set.reps, e1rm: set.e1rm, isPr: set.isPr, test: set.test };
     });
     return { name: exercise.name, sets };
   });

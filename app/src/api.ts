@@ -1,9 +1,11 @@
 // Calls to the user's web API (requirements spec section 5).
 // The body is sent as text/plain so the browser does not need a CORS preflight.
 
+import type { AnalysisData } from './analysis/analysis';
 import type { Settings } from './storage';
 
 export const MIN_API_VERSION = '1.6.0';     // 1.6.0: history, corrections, body values
+export const TEST_API_VERSION = '1.7.0';    // 1RM tests need this script version (older ones would log a normal set)
 export const UPDATE_GUIDE_URL = 'https://github.com/stadler-tom/trainings-tracker/blob/main/template/UPDATE.md';
 
 export interface Exercise {
@@ -32,6 +34,7 @@ export interface ExerciseHistory {
   bestE1rm: number;
   bestRepsAtZero: number;
   recentE1rm?: { date: string; e1rm: number }[];   // last sessions without deload, oldest first (API 1.5.0+)
+  bestTest?: { kg: number; date: string } | null;  // best 1RM test, never part of the progression (API 1.7.0+)
 }
 
 export interface Session {
@@ -65,7 +68,7 @@ export interface TrainingDetail {
   exercises: {
     id: string;
     name: string;
-    sets: (LoggedSet & { e1rm: number; isPr: boolean })[];
+    sets: (LoggedSet & { e1rm: number; isPr: boolean; test?: boolean })[];   // test: 1RM test, e1rm = kg (API 1.7.0+)
   }[];
 }
 
@@ -105,6 +108,7 @@ const MESSAGES: Record<string, string> = {
   invalid_body: 'Bitte Gewicht zwischen 30 und 250 kg bzw. Bauchumfang zwischen 40 und 250 cm eintragen.',
   missing_weight: 'Bei einer Übung fehlt das Gewicht',
   invalid_reps: 'Bei einer Übung ist eine Wiederholungszahl ungültig',
+  invalid_test: 'Ein 1RM-Test hat genau einen Satz mit 1 Wiederholung',
   nothing_to_save: 'Es ist noch kein Satz eingetragen.',
   busy: 'Das Sheet ist gerade beschäftigt. Bitte gleich noch einmal versuchen.',
   unknown_exercise: 'Eine Übung fehlt im Übungsstamm des Sheets.',
@@ -198,7 +202,7 @@ export interface SavePayload {
   date: string;                                  // yyyy-MM-dd
   deload: boolean;
   note: string;
-  exercises: { id: string; kg: number | null; reps: (number | null)[]; failure: boolean }[];
+  exercises: { id: string; kg: number | null; reps: (number | null)[]; failure: boolean; test?: boolean }[];   // test: 1RM test (API 1.7.0+)
 }
 
 export const saveTraining = (settings: Settings, payload: SavePayload) =>
@@ -215,3 +219,6 @@ export const getTraining = (settings: Settings, date: string, day: string) =>
 
 export const saveBody = (settings: Settings, date: string, weight: number | null, waist: number | null) =>
   call<{ body: BodyEntry[] }>(settings, 'saveBody', { date, weight, waist });
+
+/** Everything the PC analysis needs, read-only (API 1.7.0+). */
+export const getAnalysis = (settings: Settings) => call<AnalysisData>(settings, 'getAnalysis');

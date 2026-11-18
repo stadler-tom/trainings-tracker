@@ -9,6 +9,8 @@
  * - editing "Übungen" refreshes the dropdown list, the shown names and the info rows.
  * Day sheets are recognised by their header in row 4; the tab name is the day name.
  * Every slot keeps the exercise ID in hidden column G, so renaming an exercise is safe.
+ * Muscle groups are named once, in sheet "Muskelgruppen" (hidden ID in column D); "Übungen" picks them
+ * from a dropdown and follows a renamed group (see syncMuscleGroups_).
  * Info rows are computed here and written as plain text (no sheet formulas),
  * so nothing depends on the spreadsheet locale.
  *
@@ -16,7 +18,8 @@
  */
 
 // ===== Configuration (shared with Setup.gs and Api.gs) =======================
-const SHEET = { exercises: 'Übungen', log: 'Log', body: 'Körper', help: 'Hilfe', lists: '_lists', settings: 'Einstellungen' };
+const SHEET = { exercises: 'Übungen', log: 'Log', body: 'Körper', help: 'Hilfe', lists: '_lists', settings: 'Einstellungen',
+  muscleGroups: 'Muskelgruppen' };
 
 // Each slot uses three rows: exercise name + position, inputs, info.
 const FIRST_ROW = 5;
@@ -31,9 +34,14 @@ const POSITION_COL = 6;            // name row, column F: position of the exerci
 
 // column index (0-based) in sheet "Übungen" and "Log"
 const EX = { id: 0, name: 1, muscleGroup: 2, type: 3, repsMin: 4, repsMax: 5, increment: 6, weightType: 7, active: 8 };
-const LOG = { date: 0, day: 1, exerciseId: 2, exercise: 3, muscleGroup: 4, set: 5, kg: 6, reps: 7, failure: 8, deload: 9, savedAt: 10, note: 11 };
+const LOG = { date: 0, day: 1, exerciseId: 2, exercise: 3, muscleGroup: 4, set: 5, kg: 6, reps: 7, failure: 8, deload: 9, savedAt: 10, note: 11, test: 12 };
 const EX_HEADER = ['ID', 'Übung', 'Muskelgruppe', 'Typ', 'Wdh-Min', 'Wdh-Max', 'Gewichtssprung (kg)', 'Gewichtsart', 'Aktiv'];
-const LOG_HEADER = ['Datum', 'Tag', 'Übungs-ID', 'Übung', 'Muskelgruppe', 'Satz', 'kg', 'Wdh', 'Versagen', 'Deload', 'Gespeichert am', 'Notiz'];
+const LOG_HEADER = ['Datum', 'Tag', 'Übungs-ID', 'Übung', 'Muskelgruppe', 'Satz', 'kg', 'Wdh', 'Versagen', 'Deload', 'Gespeichert am', 'Notiz',
+  '1RM-Test'];   // 1RM-Test (since 1.7.0): 1 = a real one-rep max attempt, kept out of all progression
+// sheet "Muskelgruppen" (since 1.7.0): name, weekly set target, hidden ID
+const MG = { name: 0, setsMin: 1, setsMax: 2, id: 3 };
+const MG_HEADER = ['Muskelgruppe', 'Sätze/Woche Min', 'Sätze/Woche Max', 'ID'];
+const MUSCLE_GROUP_NAMES_PROPERTY = 'MUSCLE_GROUP_NAMES';   // { group ID: name at the last check }
 const VALUE = { active: 'ja', warmUp: 'Aufwärmen', addedWeight: 'Zusatzgewicht' };
 const DECREASE_TOLERANCE = 2;   // rule 3 only if set 1 is more than this below reps min
 
@@ -139,6 +147,16 @@ function onEdit(e) {
   const ss = sheet.getParent();
 
   if (name === SHEET.exercises) { refreshExerciseList_(ss); refreshAllInfo_(ss); return; }   // also renames
+  if (name === SHEET.muscleGroups) {                     // renamed group: exercises follow
+    const lock = LockService.getDocumentLock();
+    if (!lock.tryLock(10000)) return;
+    try {
+      if (syncMuscleGroups_(ss)) refreshExerciseList_(ss);
+    } finally {
+      lock.releaseLock();
+    }
+    return;
+  }
   if (name === SHEET.log) { refreshAllInfo_(ss); return; }
   if (!isDaySheet_(sheet)) return;
 
@@ -306,7 +324,7 @@ function saveTraining_(sheet) {
       sets.forEach(function (s, i) {
         const isLastSet = i === sets.length - 1;
         rows.push([date, day, slot.id, ex.name, ex.muscleGroup, s.no, kg, s.reps,
-          failure && isLastSet, isDeload, now, note]);
+          failure && isLastSet, isDeload, now, note]);      // column M (1RM-Test) stays empty: tests only from the app
       });
     });
 
@@ -327,7 +345,7 @@ function saveTraining_(sheet) {
     }
 
     // write in one step; if this throws, the inputs stay untouched
-    log.getRange(lastRow + 1, 1, rows.length, LOG_HEADER.length).setValues(rows);
+    log.getRange(lastRow + 1, 1, rows.length, rows[0].length).setValues(rows);
     SpreadsheetApp.flush();
 
     clearInputs_(sheet);
@@ -393,11 +411,37 @@ function loadExercises_(ss) {
   return byId;
 }
 
-/** Reads exercises and log once; keeps the latest non-deload session per exercise ID. */
-/** All log rows below the header (one read; callers pass them on instead of reading again). */
+/**
+ * All log rows below the header (one read; callers pass them on instead of reading again).
+ * Rows always have LOG_HEADER.length entries, also in a log sheet that has fewer columns.
+ */
 function readLog_(ss) {
   const log = ss.getSheetByName(SHEET.log);
-  return log.getLastRow() > 1 ? log.getRange(2, 1, log.getLastRow() - 1, LOG_HEADER.length).getValues() : [];
+  if (log.getLastRow() < 2) return [];
+  const columns = Math.min(LOG_HEADER.length, log.getMaxColumns());
+  return log.getRange(2, 1, log.getLastRow() - 1, columns).getValues().map(function (row) {
+    while (row.length < LOG_HEADER.length) row.push('');
+    return row;
+  });
+}
+
+/** true for a 1RM test row (since 1.7.0); also accepts a ticked box or "1" typed by hand. */
+function isTestRow_(r) {
+  const value = r[LOG.test];
+  return value === 1 || value === true || String(value).trim() === '1';
+}
+
+/** Adds the header "1RM-Test" to the log if it is missing; never touches logged rows. */
+function ensureLogTestColumn_(ss) {
+  const log = ss.getSheetByName(SHEET.log);
+  const column = LOG.test + 1;
+  if (log.getMaxColumns() < column) log.insertColumnsAfter(log.getMaxColumns(), column - log.getMaxColumns());
+  const header = String(log.getRange(1, column).getValue() || '');
+  if (header === LOG_HEADER[LOG.test]) return;
+  if (header !== '') {
+    throw new Error('Im Blatt Log steht in Spalte M schon "' + header + '". Bitte die Spalte frei machen und die Einrichtung erneut ausführen.');
+  }
+  log.getRange(1, column).setValue(LOG_HEADER[LOG.test]).setFontWeight('bold');
 }
 
 /** Exercises and last regular session per exercise; logRows optional (read if missing). */
@@ -406,7 +450,7 @@ function loadContext_(ss, logRows) {
   const lastSession = {};
   (logRows || readLog_(ss)).forEach(function (r) {
     const date = r[LOG.date], id = r[LOG.exerciseId], kg = r[LOG.kg], reps = r[LOG.reps];
-    if (!(date instanceof Date) || !id || r[LOG.deload] === true) return;
+    if (!(date instanceof Date) || !id || r[LOG.deload] === true || isTestRow_(r)) return;
     if (typeof kg !== 'number' || typeof reps !== 'number') return;
     const key = Utilities.formatDate(date, tz, 'yyyy-MM-dd');
     const set = { no: r[LOG.set], kg: kg, reps: reps };
@@ -481,4 +525,121 @@ function buildInfoText_(id, ctx, isDeload) {
 /** 26.25 -> "26,25" */
 function formatNumber_(x) {
   return String(Math.round(x * 1000) / 1000).replace('.', ',');
+}
+
+// ===== Muscle groups (since 1.7.0) ===============================================
+/** Rows of sheet "Muskelgruppen" below the header: [name, sets min, sets max, ID]. */
+function muscleGroupValues_(sheet) {
+  const last = sheet.getLastRow();
+  return last > 1 ? sheet.getRange(2, 1, last - 1, MG_HEADER.length).getValues() : [];
+}
+
+/** Muscle groups for the app and the analysis: [{ name, setsMin, setsMax }] in sheet order. */
+function readMuscleGroups_(ss) {
+  const sheet = ss.getSheetByName(SHEET.muscleGroups);
+  if (!sheet) return [];
+  const number = function (value) { return typeof value === 'number' && value >= 0 ? value : null; };
+  return muscleGroupValues_(sheet).filter(function (r) { return String(r[MG.name]).trim() !== ''; }).map(function (r) {
+    return { name: String(r[MG.name]), setsMin: number(r[MG.setsMin]), setsMax: number(r[MG.setsMax]) };
+  });
+}
+
+/**
+ * Follows renamed muscle groups, like syncDayNames_ for days: every row keeps a hidden ID,
+ * so a changed name since the last check means the group was renamed. The column
+ * "Muskelgruppe" in "Übungen" is then replaced (all renames in one pass, so swapping works).
+ * Rows without ID (new groups) and copied rows with a duplicate ID get a new ID.
+ * The log keeps the group as it was saved (append-only); the analysis maps via the exercise ID.
+ * Returns the number of changed exercise rows. Call while holding the document lock.
+ */
+function syncMuscleGroups_(ss) {
+  const sheet = ss.getSheetByName(SHEET.muscleGroups);
+  if (!sheet) return 0;
+  const values = muscleGroupValues_(sheet);
+  const known = readJsonProperty_(MUSCLE_GROUP_NAMES_PROPERTY);
+  const current = {};
+  const renamed = {};                                   // old name -> new name
+  let nextNumber = 1;
+  values.forEach(function (r) {
+    const m = /^M(\d+)$/.exec(String(r[MG.id]));
+    if (m) nextNumber = Math.max(nextNumber, Number(m[1]) + 1);
+  });
+  let idsChanged = false;
+  values.forEach(function (r) {
+    const name = String(r[MG.name]);
+    if (name.trim() === '') return;
+    let id = String(r[MG.id] || '');
+    if (!id || id in current) {                         // new row, or a copied row with the ID of another group
+      id = 'M' + ('0' + nextNumber++).slice(-2);
+      r[MG.id] = id;
+      idsChanged = true;
+    }
+    current[id] = name;
+    if (known[id] !== undefined && known[id] !== name) renamed[known[id]] = name;
+  });
+  if (idsChanged) sheet.getRange(2, MG.id + 1, values.length, 1).setValues(values.map(function (r) { return [r[MG.id]]; }));
+
+  let changedRows = 0;
+  const exercises = ss.getSheetByName(SHEET.exercises);
+  if (Object.keys(renamed).length && exercises.getLastRow() > 1) {
+    const range = exercises.getRange(2, EX.muscleGroup + 1, exercises.getLastRow() - 1, 1);
+    const groups = range.getValues();
+    groups.forEach(function (row) {
+      const newName = renamed[String(row[0])];
+      if (newName !== undefined) { row[0] = newName; changedRows++; }
+    });
+    if (changedRows) range.setValues(groups);
+  }
+  writeJsonProperty_(MUSCLE_GROUP_NAMES_PROPERTY, current);
+  return changedRows;
+}
+
+/**
+ * Creates sheet "Muskelgruppen" if needed and adds every group that is used in "Übungen"
+ * but not listed yet (targets stay empty for the user to fill in). Never removes a row.
+ * Returns the added names and groups of spellings that differ only in case or spaces.
+ */
+function ensureMuscleGroups_(ss) {
+  let sheet = ss.getSheetByName(SHEET.muscleGroups);
+  if (!sheet) sheet = ss.insertSheet(SHEET.muscleGroups);
+  if (sheet.getRange(1, 1).getValue() !== MG_HEADER[0]) {
+    sheet.getRange(1, 1, 1, MG_HEADER.length).setValues([MG_HEADER]).setFontWeight('bold');
+    sheet.setFrozenRows(1);
+    [180, 130, 130, 60].forEach(function (w, i) { sheet.setColumnWidth(i + 1, w); });
+    sheet.hideColumns(MG.id + 1);
+  }
+  syncMuscleGroups_(ss);                                // IDs for rows typed in by hand
+  const listed = muscleGroupValues_(sheet).map(function (r) { return String(r[MG.name]); })
+    .filter(function (name) { return name.trim() !== ''; });
+  const used = [];
+  ss.getSheetByName(SHEET.exercises).getDataRange().getValues().slice(1).forEach(function (r) {
+    const group = String(r[EX.muscleGroup]);
+    if (r[EX.id] && group.trim() !== '' && used.indexOf(group) < 0) used.push(group);
+  });
+  const added = used.filter(function (group) { return listed.indexOf(group) < 0; })
+    .sort(function (a, b) { return a.localeCompare(b, 'de'); });
+  if (added.length) {
+    sheet.getRange(sheet.getLastRow() + 1, 1, added.length, 1).setValues(added.map(function (name) { return [name]; }));
+    syncMuscleGroups_(ss);
+  }
+  const byKey = {};
+  listed.concat(added).forEach(function (name) {
+    const key = name.trim().replace(/\s+/g, ' ').toLowerCase();
+    (byKey[key] || (byKey[key] = [])).push(name);
+  });
+  const variants = Object.keys(byKey).filter(function (key) { return byKey[key].length > 1; })
+    .map(function (key) { return byKey[key]; });
+  return { added: added, variants: variants };
+}
+
+/** Dropdown in column "Muskelgruppe" of "Übungen": only names from sheet "Muskelgruppen". */
+function applyMuscleGroupDropdown_(ss) {
+  const groups = ss.getSheetByName(SHEET.muscleGroups);
+  const exercises = ss.getSheetByName(SHEET.exercises);
+  const rule = SpreadsheetApp.newDataValidation()
+    .requireValueInRange(groups.getRange(2, 1, groups.getMaxRows() - 1, 1), true)
+    .setAllowInvalid(false)
+    .setHelpText('Muskelgruppe aus dem Blatt „Muskelgruppen“ wählen. Neue Gruppen dort anlegen.')
+    .build();
+  exercises.getRange(2, EX.muscleGroup + 1, exercises.getMaxRows() - 1, 1).setDataValidation(rule);
 }

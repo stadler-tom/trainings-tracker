@@ -4,7 +4,7 @@ import type { Exercise, ExerciseHistory } from '../api';
 import { signedKg } from '../body';
 import { parseKg, type DraftItem } from '../draft';
 import { randomRecordPicture } from '../recordPictures';
-import { checkRecord, formatNumber, lastText, stepValue, targetToday } from '../training';
+import { checkRecord, checkTestRecord, formatNumber, lastText, stepValue, targetToday } from '../training';
 import RecordBanner from './RecordBanner.vue';
 
 const props = defineProps<{
@@ -16,6 +16,7 @@ const props = defineProps<{
   isLast: boolean;
   invalidField?: 'kg' | number | null;   // input marked after a failed save
   bodyWeight?: number | null;            // newest weighing, for pull-up records (API 1.6.0+)
+  canTest?: boolean;                     // script can log 1RM tests (API 1.7.0+)
 }>();
 const emit = defineEmits<{ changed: []; move: [direction: -1 | 1]; remove: []; saveNote: [note: string]; showTools: [] }>();
 
@@ -30,6 +31,10 @@ const hasTools = computed(() =>
 const record = computed(() => {
   const kg = parseKg(props.item.kg);
   if (!props.exercise || kg === null) return null;
+  if (props.item.test) {
+    const result = checkTestRecord(props.history, kg);
+    return result.isRecord ? { text: result.text, kind: result.kind, reps: 1 } : null;
+  }
   let best: { text: string; kind: string | null; reps: number } | null = null;
   for (const text of props.item.reps) {
     const reps = Number(text);
@@ -89,6 +94,15 @@ function selectAll(event: FocusEvent) {
   setTimeout(() => input.setSelectionRange(0, input.value.length), 0);
 }
 
+/** 1RM test: one attempt with 1 rep; the set fields and the failure mark are not used. */
+function toggleTest() {
+  if (props.item.test) {
+    props.item.reps = props.item.reps.map(() => '');
+    props.item.failure = false;
+  }
+  emit('changed');
+}
+
 const editingNote = ref(false);
 const noteText = ref('');
 function startNote() {
@@ -136,7 +150,7 @@ function finishNote() {
       </svg>
       <span class="muted small">{{ curve.text }}</span>
     </div>
-    <p v-if="target && target.text" class="target">Ziel heute: <strong>{{ target.text }}</strong></p>
+    <p v-if="target && target.text && !item.test" class="target">Ziel heute: <strong>{{ target.text }}</strong></p>
     <p v-if="exercise && exercise.repsMax > 0" class="muted small">Wdh: {{ exercise.repsMin }}–{{ exercise.repsMax }}</p>
 
     <div class="weight">
@@ -157,7 +171,12 @@ function finishNote() {
       <button v-if="hasTools" class="tools" @click="emit('showTools')">Scheiben &amp; Aufwärmen</button>
     </div>
 
-    <div class="sets">
+    <p v-if="item.test" class="test-hint">
+      1RM-Test: ein Versuch mit 1 Wdh.<template v-if="history?.bestTest"> Bisher bestes 1RM: {{ formatNumber(history.bestTest.kg) }} kg.</template>
+      Zählt nicht für Ziel, Rekorde und Progression.
+    </p>
+
+    <div v-else class="sets">
       <div v-for="(_, index) in item.reps" :key="index" class="set" :class="{ invalid: invalidField === index }">
         <span class="muted small">S{{ index + 1 }}</span>
         <button class="step" :aria-label="`Satz ${index + 1} mehr`" @click="stepReps(index, 1)">+</button>
@@ -175,15 +194,19 @@ function finishNote() {
       </div>
     </div>
 
-    <label class="check">
+    <label v-if="!item.test" class="check">
       <input v-model="item.failure" type="checkbox" @change="emit('changed')" />
       Versagen im letzten Satz
+    </label>
+    <label v-if="canTest || item.test" class="check">
+      <input v-model="item.test" type="checkbox" @change="toggleTest" />
+      1RM-Test (Maximalversuch)
     </label>
 
     <RecordBanner
       v-if="record"
       :text="record.text"
-      :image="record.kind === 'e1rm' ? recordPicture : undefined"
+      :image="record.kind === 'e1rm' || record.kind === 'test' ? recordPicture : undefined"
     />
   </section>
 </template>
@@ -215,4 +238,5 @@ function finishNote() {
 .set input { width: 100%; text-align: center; padding: 0 4px; font-weight: 600; }
 .check { flex-direction: row; align-items: center; gap: 10px; min-height: 44px; color: var(--text); }
 .check input { width: 24px; height: 24px; min-height: 0; }
+.test-hint { margin: 0; padding: 10px 12px; border-radius: 10px; background: color-mix(in srgb, var(--today) 14%, transparent); }
 </style>

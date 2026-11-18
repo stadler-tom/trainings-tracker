@@ -18,6 +18,7 @@ export interface DraftItem {
   kg: string;                        // as typed, with decimal comma
   reps: string[];                    // one entry per set, '' = set not done
   failure: boolean;
+  test?: boolean;                    // 1RM test: one set with 1 rep, kept out of the progression
 }
 
 export interface Draft {
@@ -114,6 +115,13 @@ export function buildPayload(draft: Draft): BuildResult {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(draft.date)) return { error: 'Bitte ein Datum wählen.', field: 'date' };
   if (draft.date > todayIso()) return { error: 'Das Datum liegt in der Zukunft.', field: 'date' };
   for (const [itemIndex, item] of draft.items.entries()) {
+    if (item.test) {                                             // 1RM test: weight only, always 1 rep
+      const kg = parseKg(item.kg);
+      if (kg === null) return { error: `Beim 1RM-Test „${item.name}“ fehlt das Gewicht.`, itemIndex, field: 'kg' };
+      exercises.push({ id: item.id, kg, reps: [1, ...Array(SET_COUNT - 1).fill(null)], failure: false, test: true });
+      sets++;
+      continue;
+    }
     const filled = item.reps.map((r) => r.trim());
     if (filled.every((r) => r === '')) continue;                 // exercise not done
     const kg = parseKg(item.kg);
