@@ -10,9 +10,8 @@ import LineChart, { type ChartMark } from './LineChart.vue';
 const props = defineProps<{ data: AnalysisData; stats: Map<string, ExerciseStats> }>();
 const selected = defineModel<string | null>('selected', { required: true });
 
-// each chart has its own time range; the e1RM range also drives the tile "Veränderung"
+// one time range for the tile "Veränderung" and both charts
 const range = ref<ChartRange>('6m');
-const volumeRange = ref<ChartRange>('6m');
 const today = todayIso();
 
 // dropdown: exercises grouped by muscle group (order of sheet "Muskelgruppen"), active ones or with data
@@ -42,7 +41,6 @@ const firstDate = computed(() => {
   return [s?.sessions[0]?.date, s?.tests[0]?.date].filter(Boolean).sort()[0];
 });
 const from = computed(() => rangeStart(range.value, today, firstDate.value));
-const volumeFrom = computed(() => rangeStart(volumeRange.value, today, firstDate.value));
 const shown = computed(() => (current.value?.regular ?? []).filter((s) => s.date >= from.value));
 const shownTests = computed(() => (current.value?.tests ?? []).filter((t) => t.date >= from.value));
 
@@ -74,6 +72,12 @@ const view = computed(() => {
   };
 });
 
+// the e1RM chart spans only the days with data in the range, so it starts at the first session
+const chartSpan = computed(() => {
+  const dates = [...shown.value.map((x) => x.date), ...chartMarks.value.map((m) => m.date)].sort();
+  return { from: dates[0] ?? from.value, to: dates[dates.length - 1] ?? today };
+});
+
 const chartMarks = computed<ChartMark[]>(() => [
   ...shown.value.filter((x) => x.isRecord).map((x) => ({ date: x.date, value: x.e1rm, shape: 'circle' as const, color: 'var(--a-record)' })),
   ...shownTests.value.map((t) => ({ date: t.date, value: t.kg, shape: 'square' as const, color: 'var(--a-text)' })),
@@ -83,7 +87,7 @@ const chartMarks = computed<ChartMark[]>(() => [
 
 // volume bars of the sessions in the volume range (deload included), the newest one highlighted
 const bars = computed(() => {
-  const list = (current.value?.sessions ?? []).filter((x) => x.date >= volumeFrom.value);
+  const list = (current.value?.sessions ?? []).filter((x) => x.date >= from.value);
   if (!list.length) return null;
   const max = Math.max(...list.map((x) => x.volume), 1);
   return list.map((x, i) => ({
@@ -110,7 +114,7 @@ const rows = computed(() => {
 </script>
 
 <template>
-  <div class="a-bar" style="align-items: flex-end; justify-content: flex-start">
+  <div class="a-bar" style="align-items: flex-end; justify-content: flex-start; gap: 16px">
     <label class="a-field">
       <span class="a-label">Übung</span>
       <select class="a-select" :value="current?.exercise.id" @change="selected = ($event.target as HTMLSelectElement).value">
@@ -119,6 +123,7 @@ const rows = computed(() => {
         </optgroup>
       </select>
     </label>
+    <RangeButtons v-model="range" label="Zeitraum für Veränderung und Diagramme" />
   </div>
 
   <template v-if="view && current">
@@ -156,7 +161,6 @@ const rows = computed(() => {
     <section class="a-card">
       <div class="a-bar" style="gap: 8px">
         <h2>Verlauf errechnetes e1RM</h2>
-        <RangeButtons v-model="range" label="Zeitraum e1RM-Verlauf" />
       </div>
       <div class="a-legend">
         <span><span style="width: 18px; height: 3px; background: var(--a-chart); display: inline-block"></span>e1RM je Einheit</span>
@@ -167,8 +171,8 @@ const rows = computed(() => {
       <LineChart
         :lines="[{ points: shown.map((x) => ({ date: x.date, value: x.e1rm })), color: 'var(--a-chart)', dots: true }]"
         :marks="chartMarks"
-        :from="from"
-        :to="today"
+        :from="chartSpan.from"
+        :to="chartSpan.to"
         label="Linienchart errechnetes e1RM je Einheit"
       />
     </section>
@@ -177,12 +181,11 @@ const rows = computed(() => {
       <section class="a-card" style="flex: 1 1 420px; min-width: 0">
         <div class="a-bar" style="gap: 8px">
           <h2>Volumen je Einheit (kg × Wdh)</h2>
-          <RangeButtons v-model="volumeRange" label="Zeitraum Volumen" />
         </div>
         <div v-if="bars" role="img" aria-label="Säulenchart Volumen je Einheit"
-          style="height: 180px; display: flex; align-items: flex-end; gap: 4px; border-bottom: 1px solid var(--a-line)">
+          :style="{ height: '180px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: bars.length > 20 ? '2px' : '2%', borderBottom: '1px solid var(--a-line)' }">
           <div v-for="(b, i) in bars" :key="i" :title="b.title"
-            :style="{ flex: '1 1 0', maxWidth: '48px', height: b.height, background: b.last ? 'var(--a-chart)' : 'var(--a-neutral)', borderRadius: '3px 3px 0 0' }"></div>
+            :style="{ flex: '1 1 0', maxWidth: '25%', height: b.height, background: b.last ? 'var(--a-chart)' : 'var(--a-neutral)', borderRadius: '3px 3px 0 0' }"></div>
         </div>
         <p v-else class="a-note">Keine Einheit in diesem Zeitraum.</p>
       </section>

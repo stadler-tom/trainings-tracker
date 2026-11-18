@@ -47,19 +47,20 @@ function rowOf(s: ExerciseStats): Row {
 }
 
 const active = computed(() => [...props.stats.values()].filter((s) => s.exercise.active));
+// exercises of the chosen training day; the tiles and the table follow this choice
+const ofDay = computed(() => (day.value === 'Alle' ? active.value : active.value.filter((s) => daysOf(s.exercise.id).includes(day.value))));
 
 const tiles = computed(() => ({
-  up: active.value.filter((s) => (e1rmChangeSince(s, SIX_WEEKS_AGO) ?? 0) > 0.05).length,
-  stalled: active.value.filter((s) => s.status === 'stalled').length,
-  records: active.value.reduce((n, s) => n + s.regular.filter((x) => x.isRecord && x.date >= MONTH_AGO).length, 0),
-  jump: active.value.filter((s) => s.status === 'jump').length,
+  up: ofDay.value.filter((s) => (e1rmChangeSince(s, SIX_WEEKS_AGO) ?? 0) > 0.05).length,
+  stalled: ofDay.value.filter((s) => s.status === 'stalled').length,
+  records: ofDay.value.reduce((n, s) => n + s.regular.filter((x) => x.isRecord && x.date >= MONTH_AGO).length, 0),
+  jump: ofDay.value.filter((s) => s.status === 'jump').length,
 }));
 
 const groups = computed(() => {
   const order = props.data.muscleGroups.map((g) => g.name);
   const byGroup = new Map<string, Row[]>();
-  for (const s of active.value) {
-    if (day.value !== 'Alle' && !daysOf(s.exercise.id).includes(day.value)) continue;
+  for (const s of ofDay.value) {
     if (onlyStalled.value && s.status !== 'stalled') continue;
     const group = s.exercise.muscleGroup || 'Ohne Muskelgruppe';
     byGroup.set(group, [...(byGroup.get(group) ?? []), rowOf(s)]);

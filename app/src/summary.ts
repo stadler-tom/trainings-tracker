@@ -52,11 +52,11 @@ export function buildSummary(payload: SavePayload, before: State | null): Summar
       return { set: index + 1, kg: set.kg, reps: set.reps, e1rm: e1rm(set.kg + addedBody, set.reps), isPr: false };
     });
     if (!sets.length) continue;
-    // the record is the best set of the exercise if it beats all earlier trainings (same rule as in the card);
-    // an exercise marked "Eingeschränkt" is never a record
+    // the record is the heaviest set with the minimum reps if its weight beats all earlier trainings
+    // (same rule as in the card); an exercise marked "Eingeschränkt" is never a record
     if (exercise && item.limited == null) {
-      const best = [...sets].sort((a, b) => b.e1rm - a.e1rm || b.reps - a.reps)[0];
-      if (checkRecord(exercise, history, best.kg, best.reps, payload.deload, bodyWeight).isRecord) {
+      const best = [...sets].filter((s) => s.reps >= exercise.repsMin).sort((a, b) => b.kg - a.kg || b.reps - a.reps)[0];
+      if (best && checkRecord(exercise, history, best.kg, best.reps, payload.deload).isRecord) {
         best.isPr = true;
         prCount++;
       }

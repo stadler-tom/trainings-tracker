@@ -42,9 +42,15 @@ setupApi ergänzt nur, was fehlt. Es ändert keine Daten im Log und erzeugt kein
 
 In der App **Einstellungen → Verbindung testen**. Die Meldung zeigt die neue Web-API-Version, der Hinweis „veraltet“ ist weg.
 
+## Neu in Version 1.8.1
+
+**Wichtig:** Die App braucht ab jetzt Script-Version 1.8.1. Wer noch auf 1.7 ist, macht das Update einmal und bekommt alles aus 1.8.0 mit (siehe unten).
+
+**Rekord.** Das Rekordbild in der App erscheint nur noch, wenn du mit einem neuen, höheren Gewicht mindestens die Min-Wdh der Übung schaffst. Mehr Wiederholungen bei gleichem Gewicht sind kein Rekord. Schaffst du die Min-Wdh einer Übung zum ersten Mal, ist das der Ausgangswert, noch kein Rekord. Das gilt auch für die 🏆 in der Zusammenfassung. Die PC-Auswertung zählt weiter neue e1RM-Bestwerte.
+
 ## Neu in Version 1.8.0
 
-**Wichtig:** Die App braucht ab jetzt Script-Version 1.8.0. Bis du das Script aktualisiert hast, zeigt sie „Script im Sheet veraltet“ und speichert nicht. Das Update also vor dem nächsten Training machen.
+**Wichtig:** Bis du das Script aktualisiert hast, zeigt die App „Script im Sheet veraltet“ und speichert nicht. Das Update also vor dem nächsten Training machen.
 
 **Tagesblätter neu.** setupApi baut jedes Tagesblatt einmal in den neuen Aufbau um. Übungen und Reihenfolge bleiben, das Log wird nicht angefasst. Die Meldung nennt die umgebauten Blätter. Danach in jedem Tagesblatt prüfen:
 - **B2 Wochentag:** an welchem Tag du diese Einheit trainierst (Auswahlliste). **B3** ist ein optionaler zweiter Wochentag. Die App rahmt damit den heutigen Tag ein und zeigt ihn am Knopf, z. B. „Push (Mo, Do)“. Ohne Wochentag schätzt die App wie bisher.

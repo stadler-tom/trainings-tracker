@@ -121,54 +121,28 @@ export function lastText(history: ExerciseHistory | undefined): string | null {
 
 export interface RecordResult {
   isRecord: boolean;
-  kind: 'e1rm' | 'bodyweightReps' | 'test' | null;   // e1RM records and new 1RM tests show the record picture
-  text: string;                    // e.g. "Neuer Rekord: 45 kg × 8 (e1RM +2,3 kg)"
+  kind: 'weight' | 'test' | null;  // new weight with the minimum reps, or a new best 1RM test; both show the record picture
+  text: string;                    // e.g. "Neuer Rekord: 85 kg × 6 (+2,5 kg)"
 }
 
 /**
- * Checks one entered set against all earlier regular sets (section 4.5).
- * No record in deload sessions and for the first session of an exercise.
- * Exercises with added weight (pull-ups): with a known body weight the e1RM of body weight
- * plus added weight counts (API 1.6.0+, the web API computes the history the same way);
- * without one, the highest rep count at 0 kg counts.
+ * Checks one entered set against all earlier regular sets (section 4.5): a record is a new heaviest
+ * weight done with at least the minimum reps of the exercise. More reps at the same weight are no record.
+ * No record in deload sessions and as long as the minimum reps were never reached before (baseline).
+ * Exercises with added weight (pull-ups) compare the added weight.
  */
-export function checkRecord(
-  exercise: Exercise, history: ExerciseHistory | undefined, kg: number, reps: number, isDeload: boolean,
-  bodyWeight: number | null = null,
-): RecordResult {
+export function checkRecord(exercise: Exercise, history: ExerciseHistory | undefined, kg: number, reps: number, isDeload: boolean): RecordResult {
   const none: RecordResult = { isRecord: false, kind: null, text: '' };
-  if (isDeload || !history?.lastSession || !(reps > 0) || !(kg >= 0)) return none;
-  const addedWeight = exercise.weightType === 'Zusatzgewicht';
-  const withBody = addedWeight && bodyWeight !== null && bodyWeight > 0;
-  if (withBody) {
-    const value = e1rm(kg + (bodyWeight as number), reps);
-    if (value <= history.bestE1rm + EPSILON) return none;
-    const load = kg > 0 ? `Körpergewicht + ${formatNumber(kg)} kg` : 'Körpergewicht';
-    return {
-      isRecord: true,
-      kind: 'e1rm',
-      text: `Neuer Rekord: ${load} × ${reps} (e1RM +${formatNumber(Math.round((value - history.bestE1rm) * 10) / 10)} kg)`,
-    };
-  }
-  if (addedWeight && kg === 0) {
-    if (reps > history.bestRepsAtZero) {
-      return {
-        isRecord: true,
-        kind: 'bodyweightReps',
-        text: `Neuer Rekord: ${reps} Wdh mit Körpergewicht (+${reps - history.bestRepsAtZero})`,
-      };
-    }
-    return none;
-  }
-  const value = e1rm(kg, reps);
-  if (value > history.bestE1rm + EPSILON) {
-    return {
-      isRecord: true,
-      kind: 'e1rm',
-      text: `Neuer Rekord: ${formatNumber(kg)} kg × ${reps} (e1RM +${formatNumber(Math.round((value - history.bestE1rm) * 10) / 10)} kg)`,
-    };
-  }
-  return none;
+  const best = history?.bestKgAtMin ?? null;
+  if (isDeload || best === null || !(kg >= 0)) return none;
+  if (!(reps >= Math.max(exercise.repsMin, 1))) return none;
+  if (!(kg > best + EPSILON)) return none;
+  const load = exercise.weightType === 'Zusatzgewicht' ? `Körpergewicht + ${formatNumber(kg)} kg` : `${formatNumber(kg)} kg`;
+  return {
+    isRecord: true,
+    kind: 'weight',
+    text: `Neuer Rekord: ${load} × ${reps} (+${formatNumber(Math.round((kg - best) * 100) / 100)} kg)`,
+  };
 }
 
 /**

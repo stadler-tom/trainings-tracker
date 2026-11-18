@@ -13,7 +13,7 @@
  * Error codes are English; the app shows German messages.
  */
 
-const API_VERSION = '1.8.0';   // 1.8.0: day sheets as training plan (weekdays, sets), weight per set, "Eingeschränkt"
+const API_VERSION = '1.8.1';   // 1.8.0: day sheets as training plan (weekdays, sets), weight per set, "Eingeschränkt"
 const APP_URL = 'https://stadler-tom.github.io/trainings-tracker/';
 const ANALYSIS_URL = APP_URL + 'auswertung/';
 const KEY_PROPERTY = 'API_KEY';
@@ -174,10 +174,13 @@ function buildState_(ss, daySheets, exercises, logRows, extras) {
   const tz = ss.getSpreadsheetTimeZone();
   const idByName = {};
   const weightTypeById = {};
-  exercises.forEach(function (ex) { idByName[ex.name] = ex.id; weightTypeById[ex.id] = ex.weightType; });
+  const repsMinById = {};
+  exercises.forEach(function (ex) {
+    idByName[ex.name] = ex.id; weightTypeById[ex.id] = ex.weightType; repsMinById[ex.id] = ex.repsMin || 1;
+  });
   const bodyWeightAt = bodyWeightLookup_(extras.body);
 
-  const history = {};          // id -> { lastSession, bestE1rm, bestRepsAtZero, recentE1rm, bestTest }
+  const history = {};          // id -> { lastSession, bestE1rm, bestRepsAtZero, bestKgAtMin, recentE1rm, bestTest }
   const datesByDay = {};       // day -> { 'yyyy-MM-dd': true }
   const deloadByDate = {};     // 'yyyy-MM-dd' -> true if that training was a deload
   const e1rmByDate = {};       // id -> { 'yyyy-MM-dd': best e1RM of that session }
@@ -199,7 +202,7 @@ function buildState_(ss, daySheets, exercises, logRows, extras) {
     }
     deloadByDate[dateKey] = deloadByDate[dateKey] === true || deload;
     if (isTestRow_(r)) {                       // 1RM test (since 1.7.0): only its own best, no progression
-      const ht = history[id] || (history[id] = { lastSession: null, bestE1rm: 0, bestRepsAtZero: 0 });
+      const ht = history[id] || (history[id] = { lastSession: null, bestE1rm: 0, bestRepsAtZero: 0, bestKgAtMin: null });
       if (!ht.bestTest || kg > ht.bestTest.kg) ht.bestTest = { kg: kg, date: dateKey };
       return;
     }
@@ -208,9 +211,11 @@ function buildState_(ss, daySheets, exercises, logRows, extras) {
     const value = e1rmOf_(kg, reps, weightTypeById[id] === VALUE.addedWeight ? bodyWeightAt(dateKey) : null);
     const byDate = e1rmByDate[id] || (e1rmByDate[id] = {});
     byDate[dateKey] = Math.max(byDate[dateKey] || 0, value);
-    const h = history[id] || (history[id] = { lastSession: null, bestE1rm: 0, bestRepsAtZero: 0 });
+    const h = history[id] || (history[id] = { lastSession: null, bestE1rm: 0, bestRepsAtZero: 0, bestKgAtMin: null });
     h.bestE1rm = Math.max(h.bestE1rm, value);
     if (kg === 0) h.bestRepsAtZero = Math.max(h.bestRepsAtZero, reps);
+    // bestKgAtMin (since 1.8.1): heaviest weight with at least the minimum reps, null if never reached
+    if (reps >= repsMinById[id] && (h.bestKgAtMin === null || kg > h.bestKgAtMin)) h.bestKgAtMin = kg;
     const set = { set: Number(r[LOG.set]), kg: kg, reps: reps, failure: r[LOG.failure] === true };
     if (!h.lastSession || dateKey > h.lastSession.date) h.lastSession = { date: dateKey, sets: [set] };
     else if (dateKey === h.lastSession.date) h.lastSession.sets.push(set);
@@ -374,7 +379,9 @@ function updateExerciseNote_(p) {
 
 /**
  * One training with all sets, for the summary in the history (since 1.6.0). Payload: { date, day }
- * A set is marked as record if it is the best set of its exercise and beats all earlier trainings.
+ * A set is marked as record if it is the heaviest set of its exercise with at least the minimum reps
+ * and its weight beats every earlier set with at least the minimum reps (since 1.8.1; more reps at the
+ * same weight are no record, and the first time the minimum reps are reached is the baseline).
  * 1RM tests (since 1.7.0) carry test: true and count as record if they beat all earlier tests.
  * Limited exercises (since 1.8.0) carry limited: reason ('' without one); they are never a record
  * and do not count as earlier best either.
@@ -386,7 +393,7 @@ function getTraining_(p) {
   const byId = {};
   exercises.forEach(function (ex) { byId[ex.id] = ex; });
   const bodyWeightAt = bodyWeightLookup_(readBody_(ss));
-  const best = {};           // id -> { e1rm, repsAtZero, testKg } of trainings before this one
+  const best = {};           // id -> { regular, kgAtMin, testKg } of trainings before this one
   const result = { date: String(p.date), day: String(p.day), deload: false, note: '', exercises: [] };
   const exerciseById = {};
   readLog_(ss).forEach(function (r) {
@@ -408,12 +415,11 @@ function getTraining_(p) {
       ex.sets.push({ set: Number(r[LOG.set]), kg: kg, reps: reps, failure: r[LOG.failure] === true,
         e1rm: isTest ? kg : Math.round(value * 10) / 10, isPr: false, test: isTest });
     } else if (dateKey < result.date) {
-      const b = best[id] || (best[id] = { e1rm: 0, repsAtZero: 0, testKg: null });
+      const b = best[id] || (best[id] = { kgAtMin: null, testKg: null });
       if (isTestRow_(r)) {
         b.testKg = Math.max(b.testKg || 0, kg);
       } else if (r[LOG.deload] !== true && !isLimitedRow_(r)) {
-        b.e1rm = Math.max(b.e1rm, value);
-        if (kg === 0) b.repsAtZero = Math.max(b.repsAtZero, reps);
+        if (reps >= ((byId[id] && byId[id].repsMin) || 1) && (b.kgAtMin === null || kg > b.kgAtMin)) b.kgAtMin = kg;
       }
     }
   });
@@ -430,11 +436,12 @@ function getTraining_(p) {
       const b = best[ex.id];
       const regular = ex.sets.filter(function (s) { return !s.test; });
       if (ex.limited !== undefined) return;                   // limited: never a record
-      if (!b || !b.e1rm && !b.repsAtZero || !regular.length) return;   // first training of this exercise: no record
-      const top = regular.reduce(function (x, y) { return y.e1rm > x.e1rm || (y.e1rm === x.e1rm && y.reps > x.reps) ? y : x; });
-      const beatsE1rm = top.e1rm > Math.round(b.e1rm * 10) / 10;
-      const beatsReps = top.kg === 0 && top.e1rm === 0 && top.reps > b.repsAtZero;
-      top.isPr = beatsE1rm || beatsReps;
+      if (!b || b.kgAtMin === null) return;   // minimum reps never reached before: this is the baseline, no record
+      const min = (byId[ex.id] && byId[ex.id].repsMin) || 1;
+      const qualifying = regular.filter(function (s) { return s.reps >= min; });
+      if (!qualifying.length) return;
+      const top = qualifying.reduce(function (x, y) { return y.kg > x.kg || (y.kg === x.kg && y.reps > x.reps) ? y : x; });
+      top.isPr = top.kg > b.kgAtMin;
     });
   }
   return { ok: true, data: result };

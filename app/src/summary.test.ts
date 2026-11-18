@@ -12,16 +12,16 @@ const state: State = {
       increment: 1.25, weightType: 'pro Seite', active: true, note: '', barWeight: null },
   ],
   history: {
-    E01: { lastSession: { date: '2026-11-09', sets: [{ set: 1, kg: 70, reps: 6, failure: false }] }, bestE1rm: 84, bestRepsAtZero: 0 },
-    E08: { lastSession: { date: '2026-11-08', sets: [{ set: 1, kg: 20, reps: 7, failure: false }] }, bestE1rm: 24.67, bestRepsAtZero: 0 },
+    E01: { lastSession: { date: '2026-11-09', sets: [{ set: 1, kg: 70, reps: 6, failure: false }] }, bestE1rm: 84, bestRepsAtZero: 0, bestKgAtMin: 70 },
+    E08: { lastSession: { date: '2026-11-08', sets: [{ set: 1, kg: 20, reps: 7, failure: false }] }, bestE1rm: 24.67, bestRepsAtZero: 0, bestKgAtMin: 20 },
   },
 };
 
 const payload = (deload = false): SavePayload => ({
   clientId: 'x', day: 'Beine', date: '2026-11-13', deload, note: '',
   exercises: [
-    { id: 'E01', sets: [6, 6, 5].map((reps) => ({ kg: 72.5, reps })), failure: false },   // 72,5 × 6 = e1RM 87 > 84: record
-    { id: 'E08', sets: [10, 10].map((reps) => ({ kg: 17.5, reps })), failure: false },     // 23,3 < 24,67: no record
+    { id: 'E01', sets: [6, 6, 5].map((reps) => ({ kg: 72.5, reps })), failure: false },   // 72,5 kg > 70 kg with 5+ reps: record
+    { id: 'E08', sets: [10, 10].map((reps) => ({ kg: 17.5, reps })), failure: false },     // 17,5 kg < 20 kg: no record
   ],
 });
 
@@ -50,6 +50,10 @@ describe('buildSummary', () => {
       withPullUps);
     expect(Math.round(summary.exercises[0].sets[0].e1rm)).toBe(108);      // 90 × (1 + 6/30)
     expect(summary.volume).toBe(0);
+  });
+  it('a heavier weight below the minimum reps is no PR', () => {
+    const below = { ...payload(), exercises: [{ id: 'E01', sets: [4, 4].map((reps) => ({ kg: 75, reps })), failure: false }] };
+    expect(buildSummary(below, state).prCount).toBe(0);
   });
   it('no PRs in a deload training', () => {
     expect(buildSummary(payload(true), state).prCount).toBe(0);

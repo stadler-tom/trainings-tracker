@@ -13,12 +13,13 @@ function exercise(overrides: Partial<Exercise>): Exercise {
   };
 }
 
-function history(kg: number, reps: number[], best?: { e1rm?: number; repsAtZero?: number }): ExerciseHistory {
+function history(kg: number, reps: number[], best?: { e1rm?: number; repsAtZero?: number; kgAtMin?: number | null }): ExerciseHistory {
   const sets: LoggedSet[] = reps.map((r, i) => ({ set: i + 1, kg, reps: r, failure: false }));
   return {
     lastSession: { date: '2026-11-04', sets },
     bestE1rm: best?.e1rm ?? Math.max(...reps.map((r) => e1rm(kg, r))),
     bestRepsAtZero: best?.repsAtZero ?? 0,
+    bestKgAtMin: best?.kgAtMin === undefined ? kg : best.kgAtMin,
   };
 }
 
@@ -111,15 +112,26 @@ describe('lastText', () => {
 });
 
 describe('checkRecord', () => {
-  const h = history(70, [6, 6, 6]); // best e1RM 84
-  it('detects a higher e1RM', () => {
-    const result = checkRecord(squat, h, 72.5, 6, false);
+  const h = history(70, [6, 6, 6]); // squat 5–8 Wdh, heaviest weight with 5+ reps: 70 kg
+  it('a heavier weight with the minimum reps is a record', () => {
+    const result = checkRecord(squat, h, 72.5, 5, false);
     expect(result.isRecord).toBe(true);
-    expect(result.kind).toBe('e1rm');
-    expect(result.text).toBe('Neuer Rekord: 72,5 kg × 6 (e1RM +3 kg)');
+    expect(result.kind).toBe('weight');
+    expect(result.text).toBe('Neuer Rekord: 72,5 kg × 5 (+2,5 kg)');
   });
-  it('equal e1RM is no record', () => {
-    expect(checkRecord(squat, h, 70, 6, false).isRecord).toBe(false);
+  it('a heavier weight below the minimum reps is no record', () => {
+    expect(checkRecord(squat, h, 72.5, 4, false).isRecord).toBe(false);
+  });
+  it('more reps at the same weight are no record', () => {
+    expect(checkRecord(squat, h, 70, 8, false).isRecord).toBe(false);
+  });
+  it('example from the request: 5 reps at the new weight, a week later 6 reps', () => {
+    const before = history(80, [8, 8, 8]);
+    const legPress = { ...squat, repsMin: 6 };
+    expect(checkRecord(legPress, before, 82.5, 5, false).isRecord).toBe(false);
+    // the 5-rep session does not raise the best weight, the next one with 6 reps is the record
+    const after = history(82.5, [5, 5, 4], { kgAtMin: 80 });
+    expect(checkRecord(legPress, after, 82.5, 6, false).isRecord).toBe(true);
   });
   it('no record in deload sessions', () => {
     expect(checkRecord(squat, h, 100, 6, true).isRecord).toBe(false);
@@ -127,20 +139,16 @@ describe('checkRecord', () => {
   it('no record for the first session of an exercise', () => {
     expect(checkRecord(squat, undefined, 100, 6, false).isRecord).toBe(false);
   });
-  it('added weight 0 kg compares reps', () => {
-    const ph = history(0, [5, 4], { e1rm: 0, repsAtZero: 5 });
-    expect(checkRecord(pullUp, ph, 0, 5, false).isRecord).toBe(false);
-    const result = checkRecord(pullUp, ph, 0, 7, false);
-    expect(result.isRecord).toBe(true);
-    expect(result.kind).toBe('bodyweightReps');
-    expect(result.text).toBe('Neuer Rekord: 7 Wdh mit Körpergewicht (+2)');
-  });
-  it('added weight above 0 kg uses e1RM', () => {
+  it('added weight compares the added weight, reps at body weight are no record', () => {
     const ph = history(5, [6], { repsAtZero: 10 });
-    expect(checkRecord(pullUp, ph, 7.5, 6, false).isRecord).toBe(true);
+    expect(checkRecord(pullUp, ph, 7.5, 6, false).text).toBe('Neuer Rekord: Körpergewicht + 7,5 kg × 6 (+2,5 kg)');
+    expect(checkRecord(pullUp, ph, 0, 12, false).isRecord).toBe(false);
   });
   it('empty reps is no record', () => {
     expect(checkRecord(squat, h, 100, 0, false).isRecord).toBe(false);
+  });
+  it('the first time the minimum reps are reached is the baseline, no record', () => {
+    expect(checkRecord(cableFly, history(20, [7, 7], { kgAtMin: null }), 16.25, 10, false).isRecord).toBe(false);
   });
 });
 
@@ -238,23 +246,3 @@ describe('daysDoneToday', () => {
   });
 });
 
-describe('checkRecord – pull-ups with body weight (API 1.6.0+)', () => {
-  // history: 95 kg body weight + 5 kg × 6 → e1RM 120
-  const h = history(5, [6], { e1rm: 120, repsAtZero: 8 });
-
-  it('counts body weight plus added weight', () => {
-    const result = checkRecord(pullUp, h, 5, 7, false, 95);
-    expect(result.isRecord).toBe(true);
-    expect(result.kind).toBe('e1rm');
-    expect(result.text).toBe('Neuer Rekord: Körpergewicht + 5 kg × 7 (e1RM +3,3 kg)');
-  });
-
-  it('body weight alone is an e1RM record too', () => {
-    expect(checkRecord(pullUp, h, 0, 12, false, 95).text).toBe('Neuer Rekord: Körpergewicht × 12 (e1RM +13 kg)');
-    expect(checkRecord(pullUp, h, 0, 6, false, 95).isRecord).toBe(false);
-  });
-
-  it('without body weight the old rules apply', () => {
-    expect(checkRecord(pullUp, h, 0, 9, false, null).kind).toBe('bodyweightReps');
-  });
-});

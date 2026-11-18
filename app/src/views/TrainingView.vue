@@ -2,7 +2,6 @@
 // Training input (requirements spec sections 4.2–4.8).
 import { computed, nextTick, ref } from 'vue';
 import { errorMessage, saveTraining, updateDaySlots, updateExerciseNote, type Exercise, type State } from '../api';
-import { latestBodyWeight } from '../body';
 import { deloadStatus } from '../deload';
 import { buildPayload, MAX_EXERCISES, newDraft, newItem, parseKg, type Draft, type InvalidField } from '../draft';
 import type { Settings } from '../storage';
@@ -115,7 +114,6 @@ function showMessage(text: string, isError: boolean) {
   messageIsError.value = isError;
 }
 
-const bodyWeight = computed(() => latestBodyWeight(props.state?.body));
 
 // ----- exercise selection: written to the day sheet right away (section 4.2) -----
 let slotQueue = Promise.resolve();
@@ -268,7 +266,6 @@ function discard() {
       :exercise="exercisesById[item.id]"
       :history="state?.history[item.id]"
       :deload="draft.deload"
-      :body-weight="bodyWeight"
       :per-set="draft.perSet === true"
       :is-first="index === 0"
       :is-last="index === draft.items.length - 1"

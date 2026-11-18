@@ -108,6 +108,7 @@ Wichtig: Den Link in den Einstellungen der App einfügen, nicht in Safari öffne
 - **Gerätenotiz** (z. B. „Sitz 4“) antippen und eintragen. Sie gilt für alle Trainingstage.
 - **Scheiben & Aufwärmen** zeigt bei Langhantel-Übungen, welche Scheiben auf jede Seite gehören, und schlägt Aufwärmsätze vor.
 - **1RM-Test (Maximalversuch):** Haken setzen, Gewicht eintragen. Der Versuch zählt mit 1 Wdh als getestetes 1RM und hat keinen Einfluss auf Ziel, Rekorde und Progression.
+- **Rekord:** Schaffst du mit einem höheren Gewicht als je zuvor mindestens die Min-Wdh, erscheint das Rekordbild. Mehr Wiederholungen bei gleichem Gewicht zählen nicht als Rekord.
 - **Eingeschränkt (Schmerzen, Abbruch):** Haken setzen, wenn eine Übung nicht normal lief, optional mit Grund. Sie zählt dann nicht für Ziel, Rekorde und Progression, aber beim Volumen.
 - **Training speichern** am Ende. Ein Tag kann pro Datum nur einmal gespeichert werden.
 - Schließt sich die App zwischendurch, sind beim nächsten Öffnen alle Eingaben noch da.

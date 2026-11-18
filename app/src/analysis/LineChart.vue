@@ -34,8 +34,10 @@ const chart = computed(() => {
   const X1 = width.value - 16;
   const all = [...props.lines.flatMap((l) => l.points), ...(props.marks ?? [])];
   if (!all.length) return null;
-  const start = day(props.from);
-  const end = Math.max(day(props.to), start + 1);
+  let start = day(props.from);
+  let end = day(props.to);
+  const single = end <= start;                  // one day only: the point sits in the middle
+  if (single) { start -= 1; end = start + 2; }
   const values = all.map((p) => p.value);
   let lo = Math.min(...values), hi = Math.max(...values);
   const pad = Math.max((hi - lo) * 0.08, 0.5);
@@ -57,7 +59,7 @@ const chart = computed(() => {
       dots: l.dots ? l.points.map((p) => ({ cx: x(p.date), cy: y(p.value) })) : [],
     })),
     marks: (props.marks ?? []).map((m) => ({ ...m, cx: x(m.date), cy: y(m.value), r: m.size ?? 5 })),
-    xLabels: [fmt(start), fmt((start + end) / 2), fmt(end)],
+    xLabels: single ? ['', fmt((start + end) / 2), ''] : [fmt(start), fmt((start + end) / 2), fmt(end)],
   };
 });
 </script>

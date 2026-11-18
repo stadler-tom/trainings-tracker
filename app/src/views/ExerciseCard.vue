@@ -15,7 +15,6 @@ const props = defineProps<{
   isFirst: boolean;
   isLast: boolean;
   invalidField?: Exclude<InvalidField, 'date'> | null;   // input marked after a failed save
-  bodyWeight?: number | null;            // newest weighing, for pull-up records (API 1.6.0+)
   perSet?: boolean;                      // mode "Gewicht pro Satz": one weight field per set (API 1.8.0+)
 }>();
 const emit = defineEmits<{ changed: []; move: [direction: -1 | 1]; remove: []; saveNote: [note: string]; showTools: [] }>();
@@ -57,8 +56,8 @@ const record = computed(() => {
     const reps = Number(text);
     const kg = setKg(index);
     if (!Number.isInteger(reps) || reps <= 0 || kg === null) return;
-    const result = checkRecord(props.exercise as Exercise, props.history, kg, reps, props.deload, props.bodyWeight ?? null);
-    const value = (kg + 1) * (1 + reps / 30);                     // ranks the sets; +1 keeps 0 kg sets apart
+    const result = checkRecord(props.exercise as Exercise, props.history, kg, reps, props.deload);
+    const value = kg * 1000 + reps;                                // heaviest set first, then more reps
     if (result.isRecord && (!best || value > best.value)) best = { text: result.text, kind: result.kind, value };
   });
   return best;
@@ -256,7 +255,7 @@ function finishNote() {
     <RecordBanner
       v-if="record"
       :text="record.text"
-      :image="record.kind === 'e1rm' || record.kind === 'test' ? recordPicture : undefined"
+      :image="record.kind === 'weight' || record.kind === 'test' ? recordPicture : undefined"
     />
   </section>
 </template>

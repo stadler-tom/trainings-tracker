@@ -4,7 +4,7 @@
 import type { AnalysisData } from './analysis/analysis';
 import type { Settings } from './storage';
 
-export const MIN_API_VERSION = '1.8.0';     // 1.8.0: weight per set in saveTraining, day sheets with weekdays and sets
+export const MIN_API_VERSION = '1.8.1';     // 1.8.1: bestKgAtMin for records; 1.8.0: weight per set in saveTraining, day sheets with weekdays and sets
 export const UPDATE_GUIDE_URL = 'https://github.com/stadler-tom/trainings-tracker/blob/main/template/UPDATE.md';
 
 export interface Exercise {
@@ -32,6 +32,7 @@ export interface ExerciseHistory {
   lastSession: { date: string; sets: LoggedSet[] } | null;
   bestE1rm: number;
   bestRepsAtZero: number;
+  bestKgAtMin?: number | null;                     // heaviest weight with at least the minimum reps, null if never reached (API 1.8.1+)
   recentE1rm?: { date: string; e1rm: number }[];   // last sessions without deload, oldest first (API 1.5.0+)
   bestTest?: { kg: number; date: string } | null;  // best 1RM test, never part of the progression (API 1.7.0+)
 }
