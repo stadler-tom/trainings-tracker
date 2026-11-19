@@ -1,11 +1,68 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
-import { errorMessage, isOlderVersion, loadTimings, MIN_API_VERSION, ping, UPDATE_GUIDE_URL } from '../api';
+import { computed, ref, watch } from 'vue';
+import {
+  errorMessage, isOlderVersion, loadTimings, MIN_API_VERSION, ping, updateSettings, UPDATE_GUIDE_URL,
+  type GlobalSetting, type State,
+} from '../api';
 import { formatNumber } from '../training';
-import { DEFAULT_PLATES, parseSetupLink, type Settings } from '../storage';
+import { applyDarkMode, DEFAULT_PLATES, loadDarkMode, parseSetupLink, type Settings } from '../storage';
 
-const props = defineProps<{ settings: Settings; apiVersion: string | null }>();
-const emit = defineEmits<{ save: [settings: Settings]; back: [] }>();
+const props = defineProps<{ settings: Settings; apiVersion: string | null; state: State | null }>();
+const emit = defineEmits<{ save: [settings: Settings]; back: []; stateUpdated: [state: State] }>();
+
+// dark mode: per device, switches at once
+const dark = ref(loadDarkMode());
+watch(dark, (value) => applyDarkMode(value, true));
+
+// global settings: the rows of sheet "Einstellungen", the same on every device
+const globals = computed<GlobalSetting[]>(() => props.state?.settings ?? []);
+const isSwitch = (s: GlobalSetting) => s.options?.length === 2 && s.options.includes('ja') && s.options.includes('nein');
+const globalInputs = ref<Record<string, string | boolean>>({});
+const globalsDirty = ref(false);
+function resetGlobals() {
+  globalInputs.value = Object.fromEntries(globals.value.map((s) => [s.key,
+    isSwitch(s) ? s.value === 'ja' : typeof s.value === 'number' ? formatNumber(s.value) : String(s.value)]));
+  globalsDirty.value = false;
+}
+watch(globals, () => { if (!globalsDirty.value) resetGlobals(); }, { immediate: true });
+const globalsSaving = ref(false);
+const globalsMessage = ref('');
+const globalsFailed = ref(false);
+
+/** Checks the inputs against the limits from the sheet; returns the values or an error text. */
+function globalValues(): Record<string, number | string> | string {
+  const values: Record<string, number | string> = {};
+  for (const s of globals.value) {
+    const input = globalInputs.value[s.key];
+    if (isSwitch(s)) { values[s.key] = input ? 'ja' : 'nein'; continue; }
+    if (s.options) { values[s.key] = String(input); continue; }
+    const value = Number(String(input).trim().replace(',', '.').replace('−', '-'));
+    if (String(input).trim() === '' || !Number.isFinite(value) || value < (s.min ?? -Infinity) || value > (s.max ?? Infinity)) {
+      return `„${s.label}“: bitte eine Zahl von ${formatNumber(s.min ?? 0)} bis ${formatNumber(s.max ?? 0)} eintragen.`;
+    }
+    values[s.key] = value;
+  }
+  return values;
+}
+
+async function saveGlobals() {
+  const values = globalValues();
+  globalsFailed.value = typeof values === 'string';
+  if (typeof values === 'string') { globalsMessage.value = values; return; }
+  globalsSaving.value = true;
+  globalsMessage.value = '';
+  try {
+    const result = await updateSettings(props.settings, values);
+    globalsDirty.value = false;
+    emit('stateUpdated', result.state);
+    globalsMessage.value = 'Im Sheet gespeichert. Gilt auf allen Geräten.';
+  } catch (error) {
+    globalsFailed.value = true;
+    globalsMessage.value = errorMessage(error);
+  } finally {
+    globalsSaving.value = false;
+  }
+}
 
 const apiUrl = ref(props.settings.apiUrl);
 const apiKey = ref(props.settings.apiKey);
@@ -100,7 +157,45 @@ async function testConnection() {
       <label>Verfügbare Scheiben in kg, getrennt durch Semikolon<input v-model="plates" inputmode="decimal" /></label>
     </section>
 
+    <section class="card">
+      <h2>Darstellung</h2>
+      <label class="switch-row">
+        Dunkelmodus
+        <input v-model="dark" type="checkbox" class="switch" role="switch" />
+      </label>
+      <p class="muted small">Gilt nur auf diesem Gerät und sofort.</p>
+    </section>
+
     <button class="big primary" @click="emit('save', current())">Speichern</button>
+
+    <section class="card">
+      <h2>Globale Einstellungen</h2>
+      <p class="muted small">Aus dem Blatt „Einstellungen“ in deinem Sheet. Sie gelten auf allen Geräten und für die PC-Auswertung.</p>
+      <template v-if="globals.length">
+        <div v-for="s in globals" :key="s.key" class="global">
+          <label v-if="isSwitch(s)" class="switch-row">
+            {{ s.label }}
+            <input v-model="globalInputs[s.key]" type="checkbox" class="switch" role="switch" @change="globalsDirty = true" />
+          </label>
+          <label v-else-if="s.options">{{ s.label }}
+            <select v-model="globalInputs[s.key]" @change="globalsDirty = true">
+              <option v-for="o in s.options" :key="o" :value="o">{{ o }}</option>
+            </select>
+          </label>
+          <label v-else>{{ s.label }}
+            <input v-model="globalInputs[s.key]" type="text" inputmode="decimal" autocomplete="off" @input="globalsDirty = true" />
+          </label>
+          <p class="muted small">{{ s.help }}</p>
+        </div>
+        <button :disabled="globalsSaving || !globalsDirty" @click="saveGlobals">
+          {{ globalsSaving ? 'Speichere …' : 'Globale Einstellungen speichern' }}
+        </button>
+        <p v-if="globalsMessage" class="message" :class="{ error: globalsFailed, success: !globalsFailed }">{{ globalsMessage }}</p>
+      </template>
+      <p v-else-if="state" class="muted">Dafür braucht es Script-Version 1.9.0 im Sheet.
+        <a :href="UPDATE_GUIDE_URL" target="_blank" rel="noopener">Anleitung zum Aktualisieren</a></p>
+      <p v-else class="muted">Erst die Verbindung einrichten, dann erscheinen hier die Einstellungen aus dem Sheet.</p>
+    </section>
 
     <p class="muted small">
       App {{ appVersion }} · Web-API {{ apiVersion ?? 'unbekannt' }}
@@ -114,3 +209,8 @@ async function testConnection() {
     </p>
   </main>
 </template>
+
+<style scoped>
+.global { display: flex; flex-direction: column; gap: 4px; padding: 8px 0; border-bottom: 1px solid var(--bg); }
+.global p { margin: 0; }
+</style>

@@ -126,7 +126,7 @@ Wichtig: Den Link in den Einstellungen der App einfügen, nicht in Safari öffne
 - **Muskelgruppen:** jede Gruppe genau einmal, mit **Sätze/Woche Min** und **Max** als Ziel für die Seite Volumen. Im Blatt Übungen wählst du die Gruppe aus einer Liste.
   - **Umbenennen:** nur hier. Die Übungen ziehen automatisch nach. **Neue Gruppe:** neue Zeile, die (ausgeblendete) Spalte ID bleibt leer.
 - **Log:** alle gespeicherten Sätze. Korrekturen direkt hier. Spalte **1RM-Test**: 1 = echter Maximalversuch. Spalte **Eingeschränkt**: Grund oder „ja“, leer = normal.
-- **Einstellungen:** u. a. **Gewicht pro Satz** (ja/nein). Mit „ja“ hat jeder Satz in der App ein eigenes Gewichtsfeld, und das Ziel gilt pro Satz.
+- **Einstellungen:** u. a. **Gewicht pro Satz** (ja/nein). Alle Werte lassen sich auch in der App unter *Einstellungen → Globale Einstellungen* ändern. Mit „ja“ hat jeder Satz in der App ein eigenes Gewichtsfeld, und das Ziel gilt pro Satz.
 - **Körper:** Gewicht und Bauchumfang trägst du direkt im Sheet ein (Google-Sheets-App).
 
 ## Auswertung

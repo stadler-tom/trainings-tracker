@@ -98,6 +98,19 @@ export interface State {
   body?: BodyEntry[];              // oldest first (API 1.6.0+)
   weightTarget?: number;           // kg per week, sheet "Einstellungen" (API 1.6.0+)
   perSetWeight?: boolean;          // sheet "Einstellungen": one weight field per set (API 1.8.0+)
+  settings?: GlobalSetting[];      // all rows of sheet "Einstellungen", editable in the app (API 1.9.0+)
+}
+
+/** One setting of sheet "Einstellungen": a number with limits, or a choice such as ja/nein. */
+export interface GlobalSetting {
+  key: string;
+  label: string;
+  help: string;
+  value: number | string;
+  min?: number;
+  max?: number;
+  step?: number;
+  options?: string[];
 }
 
 export class ApiError extends Error {
@@ -118,6 +131,7 @@ const MESSAGES: Record<string, string> = {
   missing_weight: 'Bei einer Übung fehlt das Gewicht',
   invalid_reps: 'Bei einer Übung ist eine Wiederholungszahl ungültig',
   invalid_test: 'Ein 1RM-Test hat genau einen Satz mit 1 Wiederholung',
+  invalid_setting: 'Ungültiger Wert bei der Einstellung',
   nothing_to_save: 'Es ist noch kein Satz eingetragen.',
   busy: 'Das Sheet ist gerade beschäftigt. Bitte gleich noch einmal versuchen.',
   unknown_exercise: 'Eine Übung fehlt im Übungsstamm des Sheets.',
@@ -237,6 +251,10 @@ export const getTraining = (settings: Settings, date: string, day: string) =>
 
 export const saveBody = (settings: Settings, date: string, weight: number | null, waist: number | null) =>
   call<{ body: BodyEntry[] }>(settings, 'saveBody', { date, weight, waist });
+
+/** Writes settings into sheet "Einstellungen" and returns the fresh state (API 1.9.0+). */
+export const updateSettings = (settings: Settings, values: Record<string, number | string>) =>
+  call<{ state: State }>(settings, 'updateSettings', { values });
 
 /** Everything the PC analysis needs, read-only (API 1.7.0+). */
 export const getAnalysis = (settings: Settings) => call<AnalysisData>(settings, 'getAnalysis');

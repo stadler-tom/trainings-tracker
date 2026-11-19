@@ -140,9 +140,7 @@ const STAGGER_MS = 80;
 }
 .today-label { background: var(--today); }
 .done-label { background: var(--done); }
-@media (prefers-color-scheme: dark) {
-  .badge { color: #0b1220; }
-}
+:root[data-theme='dark'] .badge { color: #0b1220; }
 
 .slide-in {
   animation: slide-in 380ms cubic-bezier(0.22, 1, 0.36, 1) both;

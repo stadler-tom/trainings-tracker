@@ -13,7 +13,7 @@
  * Error codes are English; the app shows German messages.
  */
 
-const API_VERSION = '1.8.1';   // 1.8.0: day sheets as training plan (weekdays, sets), weight per set, "Eingeschränkt"
+const API_VERSION = '1.9.0';   // 1.9.0: settings editable from the app; 1.8.0: day sheets as training plan (weekdays, sets), weight per set, "Eingeschränkt"
 const APP_URL = 'https://stadler-tom.github.io/trainings-tracker/';
 const ANALYSIS_URL = APP_URL + 'auswertung/';
 const KEY_PROPERTY = 'API_KEY';
@@ -25,10 +25,10 @@ const EXTRA_EXERCISE_COLUMNS = { note: 'Gerätenotiz', barWeight: 'Stangengewich
 const RECENT_E1RM_SESSIONS = 8;         // sessions per exercise: deload check and progress curve in the app
 // sheet "Einstellungen": one setting per row, label in column A, value in column B
 const SETTINGS = [
-  { key: 'deloadWeeks', label: 'Deload spätestens nach (Wochen)', value: 8, min: 1, max: 52,
+  { key: 'deloadWeeks', label: 'Deload spätestens nach (Wochen)', value: 8, min: 1, max: 52, step: 1,
     help: 'Spätestens nach so vielen Wochen ohne Deload zeigt die App „Deload-Woche fällig“. ' +
       'Sinkt die Leistung vorher bei mehreren Übungen, meldet sie sich früher (frühestens nach 4 Wochen).' },
-  { key: 'weightTarget', label: 'Ziel Körpergewicht pro Woche (kg)', value: -0.5, min: -2, max: 2,
+  { key: 'weightTarget', label: 'Ziel Körpergewicht pro Woche (kg)', value: -0.5, min: -2, max: 2, step: 0.1,
     help: 'Negativ = abnehmen, positiv = zunehmen, 0 = halten. Die App vergleicht den Wochenschnitt ' +
       'mit dem von vor 2 Wochen und meldet, ob du im Plan liegst.' },
   { key: 'perSetWeight', label: 'Gewicht pro Satz', value: 'nein', options: ['ja', 'nein'],   // since 1.8.0
@@ -70,6 +70,7 @@ function handle_(action, key, payload) {
       case 'getTraining': return getTraining_(payload);
       case 'getAnalysis': return { ok: true, data: getAnalysis_() };
       case 'saveBody': return withLock_(function () { return saveBody_(payload); });
+      case 'updateSettings': return withLock_(function () { return updateSettings_(payload); });   // since 1.9.0
       default: return { ok: false, error: 'unknown_action' };
     }
   } catch (err) {
@@ -257,6 +258,7 @@ function buildState_(ss, daySheets, exercises, logRows, extras) {
     body: extras.body,                                     // since 1.6.0, oldest first
     weightTarget: extras.settings.weightTarget,            // since 1.6.0
     perSetWeight: extras.settings.perSetWeight === VALUE.yes,   // since 1.8.0
+    settings: settingsList_(extras.settings),              // since 1.9.0: all settings with their limits, for the app
   };
 }
 
@@ -593,6 +595,47 @@ function ensureSettings_(ss) {
         .requireValueInList(setting.options, true).setAllowInvalid(false).build());
     }
   });
+}
+
+/** All settings with label, help, limits and current value, so the app can show and edit them (since 1.9.0). */
+function settingsList_(values) {
+  return SETTINGS.map(function (s) {
+    const item = { key: s.key, label: s.label, help: s.help, value: values[s.key] };
+    if (s.options) item.options = s.options;
+    else { item.min = s.min; item.max = s.max; item.step = s.step; }
+    return item;
+  });
+}
+
+/**
+ * Writes settings from the app into sheet "Einstellungen" (since 1.9.0).
+ * Payload { values: { key: value } }; every value is checked against its limits, nothing is written on an error.
+ */
+function updateSettings_(payload) {
+  const values = payload && payload.values;
+  if (!values || typeof values !== 'object') return { ok: false, error: 'invalid_setting' };
+  const checked = [];
+  for (const key in values) {
+    const setting = SETTINGS.filter(function (s) { return s.key === key; })[0];
+    if (!setting) return { ok: false, error: 'invalid_setting', detail: key };
+    let value = values[key];
+    if (setting.options) {
+      value = String(value).trim().toLowerCase();
+      if (setting.options.indexOf(value) < 0) return { ok: false, error: 'invalid_setting', detail: setting.label };
+    } else {
+      if (typeof value !== 'number' || !isFinite(value)) return { ok: false, error: 'invalid_setting', detail: setting.label };
+      value = Math.round(value / setting.step) * setting.step;
+      value = Math.round(value * 1000) / 1000;                 // no 0.30000000000000004
+      if (value < setting.min || value > setting.max) return { ok: false, error: 'invalid_setting', detail: setting.label };
+    }
+    checked.push({ setting: setting, value: value });
+  }
+  const ss = SpreadsheetApp.getActive();
+  ensureSettings_(ss);
+  const sheet = ss.getSheetByName(SHEET.settings);
+  const labels = sheet.getRange(1, 1, sheet.getLastRow(), 1).getValues().map(function (r) { return String(r[0]).trim(); });
+  checked.forEach(function (c) { sheet.getRange(labels.indexOf(c.setting.label) + 1, 2).setValue(c.value); });
+  return { ok: true, data: { state: getState_() } };
 }
 
 /** Settings from sheet "Einstellungen"; a missing or invalid value falls back to its default. */

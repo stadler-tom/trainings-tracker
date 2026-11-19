@@ -41,6 +41,31 @@ export function parseSetupLink(text: string): { apiUrl: string; apiKey: string }
   return { apiUrl, apiKey };
 }
 
+// Dark mode is chosen per device in the settings; without a choice the app follows the system.
+const THEME_KEY = 'tt.theme';
+
+export function loadDarkMode(): boolean {
+  try {
+    const stored = localStorage.getItem(THEME_KEY);
+    if (stored === 'dark' || stored === 'light') return stored === 'dark';
+  } catch {
+    // ignore
+  }
+  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false;
+}
+
+/** Switches the colours at once (and the browser bar colour) and remembers the choice. */
+export function applyDarkMode(dark: boolean, remember = false): void {
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#111827' : '#ffffff');
+  if (!remember) return;
+  try {
+    localStorage.setItem(THEME_KEY, dark ? 'dark' : 'light');
+  } catch {
+    // ignore: the choice stays for this session
+  }
+}
+
 // Last loaded state, shown at once on the next start while the fresh state loads in the
 // background. It is a copy of the sheet for display only and belongs to one web API URL.
 const STATE_KEY = 'tt.state';

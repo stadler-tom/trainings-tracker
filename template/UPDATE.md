@@ -42,6 +42,12 @@ setupApi ergänzt nur, was fehlt. Es ändert keine Daten im Log und erzeugt kein
 
 In der App **Einstellungen → Verbindung testen**. Die Meldung zeigt die neue Web-API-Version, der Hinweis „veraltet“ ist weg.
 
+## Neu in Version 1.9.0
+
+**Einstellungen in der App.** Unter *Einstellungen → Globale Einstellungen* zeigt die App die Werte aus dem Blatt **Einstellungen** (Deload-Intervall, Ziel Körpergewicht, Gewicht pro Satz) und speichert Änderungen direkt ins Sheet. Ohne das Script-Update steht dort nur ein Hinweis, der Rest der App läuft weiter.
+
+**Dunkelmodus** (nur App, kein Script nötig): Schieber unter *Einstellungen → Darstellung*. Gilt pro Gerät. Ohne Wahl folgt die App wie bisher der Einstellung des Handys.
+
 ## Neu in Version 1.8.1
 
 **Wichtig:** Die App braucht ab jetzt Script-Version 1.8.1. Wer noch auf 1.7 ist, macht das Update einmal und bekommt alles aus 1.8.0 mit (siehe unten).

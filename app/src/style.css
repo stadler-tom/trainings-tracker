@@ -15,19 +15,50 @@
   -webkit-text-size-adjust: 100%;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #111827;
-    --surface: #1f2937;
-    --text: #f9fafb;
-    --muted: #9ca3af;
-    --accent: #7c9cff;
-    --on-accent: #0b1530;
-    --today: #fbbf24;
-    --error: #ef5350;
-    --done: #4ade80;
-  }
+/* dark mode: switched in the settings (data-theme on <html>), default follows the system */
+:root[data-theme='dark'] {
+  --bg: #111827;
+  --surface: #1f2937;
+  --text: #f9fafb;
+  --muted: #9ca3af;
+  --accent: #7c9cff;
+  --on-accent: #0b1530;
+  --today: #fbbf24;
+  --error: #ef5350;
+  --done: #4ade80;
+  color-scheme: dark;
 }
+
+/* slide switch: a checkbox with role="switch" */
+input.switch {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: none;
+  width: 52px;
+  min-height: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 16px;
+  background: var(--muted);
+  position: relative;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+input.switch::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #ffffff;
+  transition: transform 0.15s;
+}
+input.switch:checked { background: var(--done); }
+input.switch:checked::after { transform: translateX(20px); }
+label.switch-row { flex-direction: row; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; font-size: 1rem; color: var(--text); }
 
 * {
   box-sizing: border-box;

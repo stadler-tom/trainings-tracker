@@ -155,7 +155,9 @@ onMounted(() => {
     v-else-if="screen === 'settings'"
     :settings="settings"
     :api-version="state?.apiVersion ?? null"
+    :state="state"
     @save="applySettings"
+    @state-updated="applyState"
     @back="screen = 'start'"
   />
 </template>
