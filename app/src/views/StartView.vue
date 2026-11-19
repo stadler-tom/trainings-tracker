@@ -3,7 +3,7 @@ import { computed } from 'vue';
 import { isOlderVersion, MIN_API_VERSION, UPDATE_GUIDE_URL, type State } from '../api';
 import { formatIsoDate, localDate } from '../format';
 import { deloadStatus } from '../deload';
-import { dayLabel, daysDoneToday, daysForToday } from '../training';
+import { dayLabel, daysDoneToday, daysForToday, sortDaysByWeekday } from '../training';
 import LoadingSpinner from './LoadingSpinner.vue';
 
 const props = defineProps<{
@@ -18,6 +18,8 @@ const emit = defineEmits<{ openDay: [day: string]; openSettings: []; openHistory
 
 // the day planned for today's weekday gets a frame (weekdays from the day sheet, else derived from the log)
 const todayDays = computed(() => (props.state ? daysForToday(props.state.days, localDate(props.today)) : []));
+// the day buttons in week order (Monday first)
+const days = computed(() => (props.state ? sortDaysByWeekday(props.state.days) : []));
 // a day with a training saved today is shown as done (instead of the "today" hint)
 const doneDays = computed(() => (props.state ? daysDoneToday(props.state.days, props.today) : []));
 
@@ -78,7 +80,7 @@ const STAGGER_MS = 80;
         <span v-if="loading" class="refreshing">· aktualisiere …</span>
       </p>
       <button
-        v-for="(day, index) in state.days"
+        v-for="(day, index) in days"
         :key="day.name"
         class="big day"
         :class="{

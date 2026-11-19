@@ -238,6 +238,15 @@ export function dayLabel(day: Day): string {
   return names.length ? `${day.name} (${names.join(', ')})` : day.name;
 }
 
+/**
+ * Days in week order: by their earliest weekday from the day sheet (Monday first).
+ * Days without a weekday come last; equal days keep the order of the sheet tabs.
+ */
+export function sortDaysByWeekday(days: Day[]): Day[] {
+  const first = (day: Day) => Math.min(8, ...(day.weekdays ?? []).filter((n) => n >= 1 && n <= 7));
+  return [...days].sort((a, b) => first(a) - first(b));
+}
+
 /** Names of the days with a training saved for the given date (the newest log entry is today). */
 export function daysDoneToday(days: Day[], todayIso: string): string[] {
   return days.filter((day) => day.lastDate === todayIso).map((day) => day.name);

@@ -27,7 +27,7 @@ Jeder Trainingstag ist ein eigenes Tabellenblatt. Der Name des Reiters unten ist
 1. Den Reiter **Training A** umbenennen (Rechtsklick auf den Reiter → **Umbenennen**), zum Beispiel in `Push` oder `Ganzkörper A`.
 2. In **B2** den Wochentag wählen, an dem du diese Einheit trainierst. **B3** ist ein optionaler zweiter Wochentag. Beides darf leer bleiben.
 3. Für jeden weiteren Tag: Rechtsklick auf einen Tages-Reiter → **Duplizieren**, dann die Kopie umbenennen und den Wochentag anpassen.
-4. Die Reihenfolge der Reiter (mit der Maus ziehen) ist die Reihenfolge der Knöpfe in der App.
+4. Die App zeigt die Tage nach Wochentag sortiert, Montag zuerst. Tage ohne Wochentag stehen am Ende, in der Reihenfolge der Reiter.
 
 Die Übungen pro Tag wählst du hier ab Zeile 6 aus der Liste oder später bequem in der App. Daneben steht die Zahl der Sätze (1 bis 5, Standard 4).
 

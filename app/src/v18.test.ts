@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { Exercise, State } from './api';
 import { buildPayload, newDraft, newItem, type Draft } from './draft';
 import { buildSummary } from './summary';
-import { dayLabel, daysForToday, lastText, perSetText, targetPerSet } from './training';
+import { dayLabel, daysForToday, lastText, perSetText, sortDaysByWeekday, targetPerSet } from './training';
 
 const bench: Exercise = { id: 'E06', name: 'Bankdrücken', muscleGroup: 'Brust', type: 'Grundübung', repsMin: 6, repsMax: 10,
   increment: 2.5, weightType: 'Gesamt', active: true, note: '', barWeight: 20 };
@@ -15,6 +15,14 @@ const history = {
 const state = (perSetWeight: boolean): State => ({
   apiVersion: '1.8.0', perSetWeight, exercises: [bench], history: { E06: history },
   days: [{ name: 'Push', lastDate: '2026-11-16', exerciseIds: ['E06'], weekdays: [1, 3], slots: [{ id: 'E06', sets: 3 }] }],
+});
+
+describe('sortDaysByWeekday', () => {
+  const day = (name: string, weekdays?: number[]) => ({ name, lastDate: null, recentDates: [], exerciseIds: [], weekdays });
+  it('sorts by the earliest weekday, Monday first; days without weekday last in tab order', () => {
+    const days = [day('Pull', [5]), day('Extra'), day('Upper', [7]), day('Push', [3, 1]), day('Beine', [1]), day('Mobility', [])];
+    expect(sortDaysByWeekday(days as never).map((d) => d.name)).toEqual(['Push', 'Beine', 'Pull', 'Upper', 'Extra', 'Mobility']);
+  });
 });
 
 describe('day plan', () => {
