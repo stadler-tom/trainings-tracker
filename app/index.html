@@ -10,6 +10,21 @@
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
     <title>Trainings-Tracker</title>
+    <script>
+      // After an update the phone may keep the old page for a few minutes (cache), whose script files
+      // no longer exist: the screen stays white. Then load the page once more, past the cache.
+      window.addEventListener('error', function (event) {
+        var tag = event.target && event.target.tagName;
+        if (tag !== 'SCRIPT' && tag !== 'LINK') return;
+        try {
+          if (sessionStorage.getItem('tt.reloaded')) return;
+          sessionStorage.setItem('tt.reloaded', '1');
+        } catch (e) {
+          return;
+        }
+        location.replace(location.pathname + '?r=' + Date.now() + location.hash);
+      }, true);
+    </script>
   </head>
   <body>
     <div id="app"></div>

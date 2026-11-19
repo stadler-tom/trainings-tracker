@@ -6,6 +6,21 @@
     <meta name="referrer" content="no-referrer" />
     <link rel="icon" href="../icon-192.png" />
     <title>Trainings-Auswertung</title>
+    <script>
+      // After an update the phone may keep the old page for a few minutes (cache), whose script files
+      // no longer exist: the screen stays white. Then load the page once more, past the cache.
+      window.addEventListener('error', function (event) {
+        var tag = event.target && event.target.tagName;
+        if (tag !== 'SCRIPT' && tag !== 'LINK') return;
+        try {
+          if (sessionStorage.getItem('tt.reloaded')) return;
+          sessionStorage.setItem('tt.reloaded', '1');
+        } catch (e) {
+          return;
+        }
+        location.replace(location.pathname + '?r=' + Date.now() + location.hash);
+      }, true);
+    </script>
   </head>
   <body>
     <div id="app"></div>
