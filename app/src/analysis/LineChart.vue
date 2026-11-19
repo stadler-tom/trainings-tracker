@@ -1,10 +1,11 @@
 <script setup lang="ts">
 // Line chart over time with optional marks (records, tests, single weighings). Plain SVG, no library.
 // The drawing uses the real width of its box, so it fills wide screens without growing taller.
+// Hovering shows the day nearest to the mouse with a guide line and an info box (info lines of its points).
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { formatIsoDate } from '../format';
 
-export interface ChartPoint { date: string; value: number }
+export interface ChartPoint { date: string; value: number; info?: string[] }   // info: lines of the hover box
 export interface ChartMark extends ChartPoint { shape: 'circle' | 'square' | 'ring'; color: string; size?: number }
 
 const props = defineProps<{
@@ -59,14 +60,46 @@ const chart = computed(() => {
       dots: l.dots ? l.points.map((p) => ({ cx: x(p.date), cy: y(p.value) })) : [],
     })),
     marks: (props.marks ?? []).map((m) => ({ ...m, cx: x(m.date), cy: y(m.value), r: m.size ?? 5 })),
+    // hover targets: one per day, with every point and mark of that day
+    days: hoverDays(props.lines.flatMap((l) => l.points.map((p) => ({ ...p, color: l.color }))).concat((props.marks ?? []).map((m) => ({ ...m }))), x, y, digits),
     xLabels: single ? ['', fmt((start + end) / 2), ''] : [fmt(start), fmt((start + end) / 2), fmt(end)],
   };
+});
+
+interface HoverDay { cx: number; date: string; dots: { cy: number; color: string }[]; lines: string[] }
+
+function hoverDays(points: (ChartPoint & { color: string })[], x: (iso: string) => number, y: (v: number) => number, digits: number): HoverDay[] {
+  const byDate = new Map<string, HoverDay>();
+  for (const p of points) {
+    const entry = byDate.get(p.date) ?? { cx: x(p.date), date: p.date, dots: [], lines: [] };
+    entry.dots.push({ cy: y(p.value), color: p.color });
+    const lines = p.info ?? [p.value.toLocaleString('de-DE', { minimumFractionDigits: digits, maximumFractionDigits: Math.max(digits, 1) })];
+    for (const line of lines) if (!entry.lines.includes(line)) entry.lines.push(line);
+    byDate.set(p.date, entry);
+  }
+  return [...byDate.values()].sort((a, b) => a.cx - b.cx);
+}
+
+// the day nearest to the mouse, or null while the mouse is outside the chart
+const hovered = ref<HoverDay | null>(null);
+function onMove(event: MouseEvent) {
+  const days = chart.value?.days ?? [];
+  if (!days.length) return;
+  const mx = event.clientX - (event.currentTarget as SVGElement).getBoundingClientRect().left;
+  hovered.value = days.reduce((a, b) => (Math.abs(b.cx - mx) < Math.abs(a.cx - mx) ? b : a));
+}
+// the box sits right of the guide line, or left of it near the right edge
+const boxStyle = computed(() => {
+  const h = hovered.value;
+  if (!h) return {};
+  return h.cx > width.value - 240 ? { right: `${width.value - h.cx + 12}px`, top: '8px' } : { left: `${h.cx + 12}px`, top: '8px' };
 });
 </script>
 
 <template>
-  <div ref="box" style="width: 100%">
-    <svg v-if="chart" :width="width" :height="H" :viewBox="`0 0 ${width} ${H}`" role="img" :aria-label="label" style="display: block; max-width: 100%">
+  <div ref="box" style="width: 100%; position: relative">
+    <svg v-if="chart" :width="width" :height="H" :viewBox="`0 0 ${width} ${H}`" role="img" :aria-label="label" style="display: block; max-width: 100%"
+      @mousemove="onMove" @mouseleave="hovered = null">
       <g v-for="(tick, i) in chart.ticks" :key="i">
         <line :x1="X0" :x2="chart.X1" :y1="tick.y" :y2="tick.y" stroke="var(--a-line)" stroke-width="1" />
         <text :x="X0 - 8" :y="tick.y + 4" text-anchor="end" font-size="12" fill="var(--a-muted)">{{ tick.label }}</text>
@@ -80,10 +113,18 @@ const chart = computed(() => {
         <circle v-else-if="m.shape === 'ring'" :cx="m.cx" :cy="m.cy" :r="m.r" fill="var(--a-surface)" :stroke="m.color" stroke-width="2" />
         <rect v-else :x="m.cx - m.r" :y="m.cy - m.r" :width="2 * m.r" :height="2 * m.r" :fill="m.color" />
       </template>
+      <g v-if="hovered" pointer-events="none">
+        <line :x1="hovered.cx" :x2="hovered.cx" :y1="Y0" :y2="Y1" stroke="var(--a-muted)" stroke-width="1" stroke-dasharray="3 3" />
+        <circle v-for="(d, k) in hovered.dots" :key="k" :cx="hovered.cx" :cy="d.cy" r="6" fill="none" :stroke="d.color" stroke-width="2" />
+      </g>
       <text :x="X0" y="272" font-size="12" fill="var(--a-muted)">{{ chart.xLabels[0] }}</text>
       <text :x="(X0 + chart.X1) / 2" y="272" text-anchor="middle" font-size="12" fill="var(--a-muted)">{{ chart.xLabels[1] }}</text>
       <text :x="chart.X1" y="272" text-anchor="end" font-size="12" fill="var(--a-muted)">{{ chart.xLabels[2] }}</text>
     </svg>
-    <p v-else class="a-note" style="min-height: 60px">Keine Daten in diesem Zeitraum.</p>
+    <div v-if="chart && hovered" class="a-chart-info" :style="boxStyle" role="status">
+      <strong>{{ formatIsoDate(hovered.date) }}</strong>
+      <div v-for="line in hovered.lines" :key="line">{{ line }}</div>
+    </div>
+    <p v-else-if="!chart" class="a-note" style="min-height: 60px">Keine Daten in diesem Zeitraum.</p>
   </div>
 </template>

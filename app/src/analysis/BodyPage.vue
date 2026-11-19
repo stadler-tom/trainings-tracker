@@ -57,7 +57,8 @@ const tiles = computed(() => {
   };
 });
 
-const averageLine = computed(() => movingAverage(body.value).filter((p) => p.date >= from.value));
+const averageLine = computed(() => movingAverage(body.value).filter((p) => p.date >= from.value)
+  .map((p) => ({ ...p, info: [`7-Tage-Schnitt ${oneDecimal(p.value)} kg`] })));
 // like the exercise charts: the chart spans only the days with data in the range
 const chartSpan = computed(() => {
   const dates = [...shown.value.map((b) => b.date), ...averageLine.value.map((p) => p.date)].sort();
@@ -113,7 +114,7 @@ const weeks = computed(() => {
     </div>
     <LineChart
       :lines="[{ points: averageLine, color: 'var(--a-chart)' }]"
-      :marks="shown.map((b) => ({ date: b.date, value: b.weight as number, shape: 'circle', color: 'var(--a-neutral)', size: 3 }))"
+      :marks="shown.map((b) => ({ date: b.date, value: b.weight as number, shape: 'circle', color: 'var(--a-neutral)', size: 3, info: [`Tageswert ${oneDecimal(b.weight as number)} kg`] }))"
       :from="chartSpan.from"
       :to="chartSpan.to"
       :digits="1"

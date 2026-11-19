@@ -3,7 +3,7 @@
 import { computed, ref } from 'vue';
 import { formatIsoDate, todayIso } from '../format';
 import { formatNumber } from '../training';
-import { nextTraining, oneDecimal, perSetCount, rangeLabel, sessionText, rangeStart, signed, STATUS_TEXT, type AnalysisData, type ChartRange, type ExerciseStats } from './analysis';
+import { nextTraining, oneDecimal, perSetCount, rangeLabel, sessionText, rangeStart, signed, STATUS_TEXT, type AnalysisData, type ChartRange, type ExerciseStats, type Session } from './analysis';
 import RangeButtons from './RangeButtons.vue';
 import LineChart, { type ChartMark } from './LineChart.vue';
 
@@ -78,11 +78,22 @@ const chartSpan = computed(() => {
   return { from: dates[0] ?? from.value, to: dates[dates.length - 1] ?? today };
 });
 
+// hover box lines of one session: exact e1RM and its sets
+const sessionInfo = (x: Session) => [`errechnetes e1RM ${oneDecimal(x.e1rm)} kg`, sessionText(x)];
+
+const e1rmLine = computed(() => shown.value.map((x) => ({ date: x.date, value: x.e1rm, info: sessionInfo(x) })));
+
 const chartMarks = computed<ChartMark[]>(() => [
-  ...shown.value.filter((x) => x.isRecord).map((x) => ({ date: x.date, value: x.e1rm, shape: 'circle' as const, color: 'var(--a-record)' })),
-  ...shownTests.value.map((t) => ({ date: t.date, value: t.kg, shape: 'square' as const, color: 'var(--a-text)' })),
-  ...(current.value?.sessions ?? []).filter((x) => x.limited !== null && x.date >= from.value)
-    .map((x) => ({ date: x.date, value: x.e1rm, shape: 'ring' as const, color: 'var(--a-muted)' })),
+  ...shown.value.filter((x) => x.isRecord).map((x) => ({
+    date: x.date, value: x.e1rm, shape: 'circle' as const, color: 'var(--a-record)', info: [...sessionInfo(x), 'neuer Rekord'],
+  })),
+  ...shownTests.value.map((t) => ({
+    date: t.date, value: t.kg, shape: 'square' as const, color: 'var(--a-text)', info: [`1RM-Test: ${formatNumber(t.kg)} kg gehoben`],
+  })),
+  ...(current.value?.sessions ?? []).filter((x) => x.limited !== null && x.date >= from.value).map((x) => ({
+    date: x.date, value: x.e1rm, shape: 'ring' as const, color: 'var(--a-muted)',
+    info: [...sessionInfo(x), x.limited ? `eingeschränkt: ${x.limited}` : 'eingeschränkt'],
+  })),
 ]);
 
 // volume bars of the sessions in the volume range (deload included), the newest one highlighted
@@ -169,7 +180,7 @@ const rows = computed(() => {
         <span><span class="a-dot" style="width: 10px; height: 10px; border: 2px solid var(--a-muted); background: var(--a-surface)"></span>eingeschränkt (nicht in der Linie)</span>
       </div>
       <LineChart
-        :lines="[{ points: shown.map((x) => ({ date: x.date, value: x.e1rm })), color: 'var(--a-chart)', dots: true }]"
+        :lines="[{ points: e1rmLine, color: 'var(--a-chart)', dots: true }]"
         :marks="chartMarks"
         :from="chartSpan.from"
         :to="chartSpan.to"

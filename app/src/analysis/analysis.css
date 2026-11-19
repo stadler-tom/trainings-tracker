@@ -31,6 +31,7 @@ button { cursor: pointer; }
 .a-value.mid { font-size: 22px; line-height: 1.35; }
 .a-muted { color: var(--a-muted); }
 .a-note { margin: 0; font-size: 13px; color: var(--a-muted); }
+.a-chart-info { position: absolute; pointer-events: none; background: var(--a-surface); border: 1px solid var(--a-line); border-radius: 8px; padding: 8px 10px; font-size: 13px; line-height: 1.5; box-shadow: 0 4px 14px rgb(0 0 0 / 0.12); white-space: nowrap; }
 .a-segments { display: flex; gap: 4px; background: var(--a-line); padding: 4px; border-radius: 10px; }
 .a-segments button { min-height: 36px; min-width: 64px; padding: 0 14px; border: 0; border-radius: 8px; background: transparent; font-size: 14px; font-weight: 500; }
 .a-segments button[aria-pressed='true'] { background: var(--a-surface); color: var(--a-accent); font-weight: 700; }
