@@ -225,6 +225,7 @@ function finishNote() {
           pattern="[0-9]*"
           autocomplete="off"
           :placeholder="repsPlaceholder(index)"
+          :class="{ filled: String(item.reps[index] ?? '').trim() !== '' }"
           :aria-label="`Satz ${index + 1} Wiederholungen`"
           @focus="selectAll"
           @input="emit('changed')"
@@ -289,6 +290,8 @@ function finishNote() {
 .set { display: flex; flex-direction: column; align-items: stretch; gap: 4px; text-align: center; }
 .set .step { width: auto; }
 .set input { width: 100%; text-align: center; padding: 0 4px; font-weight: 600; }
+/* a tracked set: green field, so it is easy to see what is done */
+.set:not(.invalid) input.filled { background: color-mix(in srgb, var(--done) 18%, var(--bg)); border-color: var(--done); }
 .check { flex-direction: row; align-items: center; gap: 10px; min-height: 44px; color: var(--text); }
 .check input { width: 24px; height: 24px; min-height: 0; }
 .test-hint { margin: 0; padding: 10px 12px; border-radius: 10px; background: color-mix(in srgb, var(--today) 14%, transparent); }
