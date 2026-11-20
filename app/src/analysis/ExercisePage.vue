@@ -104,9 +104,25 @@ const bars = computed(() => {
   return list.map((x, i) => ({
     height: `${((100 * x.volume) / max).toFixed(1)}%`,
     last: i === list.length - 1,
-    title: `${formatIsoDate(x.date)}: ${Math.round(x.volume).toLocaleString('de-DE')} kg${x.deload ? ' (Deload)' : ''}`,
+    date: x.date,
+    // lines of the hover box, like the points of the e1RM chart
+    info: [`Volumen ${Math.round(x.volume).toLocaleString('de-DE')} kg`, sessionText(x), ...(x.deload ? ['Deload'] : []),
+      ...(x.limited !== null ? [x.limited ? `eingeschränkt: ${x.limited}` : 'eingeschränkt'] : [])],
   }));
 });
+
+// hover box of the volume bars: the bar under the mouse, placed beside it (left of it near the right edge)
+const barsBox = ref<HTMLElement | null>(null);
+const hoveredBar = ref<{ index: number; style: Record<string, string> } | null>(null);
+function onBarEnter(index: number, event: MouseEvent) {
+  const box = barsBox.value!.getBoundingClientRect();
+  const bar = (event.currentTarget as HTMLElement).getBoundingClientRect();
+  const right = bar.right - box.left;
+  hoveredBar.value = {
+    index,
+    style: right > box.width - 240 ? { right: `${box.right - bar.left + 8}px`, top: '8px' } : { left: `${right + 8}px`, top: '8px' },
+  };
+}
 
 // last 6 entries: sessions incl. deload and 1RM tests, newest first
 const rows = computed(() => {
@@ -193,10 +209,17 @@ const rows = computed(() => {
         <div class="a-bar" style="gap: 8px">
           <h2>Volumen je Einheit (kg × Wdh)</h2>
         </div>
-        <div v-if="bars" role="img" aria-label="Säulenchart Volumen je Einheit"
-          :style="{ height: '180px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: bars.length > 20 ? '2px' : '2%', borderBottom: '1px solid var(--a-line)' }">
-          <div v-for="(b, i) in bars" :key="i" :title="b.title"
-            :style="{ flex: '1 1 0', maxWidth: '25%', height: b.height, background: b.last ? 'var(--a-chart)' : 'var(--a-neutral)', borderRadius: '3px 3px 0 0' }"></div>
+        <div v-if="bars" ref="barsBox" style="position: relative" @mouseleave="hoveredBar = null">
+          <div role="img" aria-label="Säulenchart Volumen je Einheit"
+            :style="{ height: '180px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: bars.length > 20 ? '2px' : '2%', borderBottom: '1px solid var(--a-line)' }">
+            <div v-for="(b, i) in bars" :key="i" class="a-bar-col" @mouseenter="onBarEnter(i, $event)"
+              :style="{ flex: '1 1 0', maxWidth: '25%', height: b.height, background: b.last ? 'var(--a-chart)' : 'var(--a-neutral)', borderRadius: '3px 3px 0 0',
+                outline: hoveredBar?.index === i ? '2px solid var(--a-text)' : 'none', outlineOffset: '1px' }"></div>
+          </div>
+          <div v-if="hoveredBar" class="a-chart-info" :style="hoveredBar.style" role="status">
+            <strong>{{ formatIsoDate(bars[hoveredBar.index].date) }}</strong>
+            <div v-for="line in bars[hoveredBar.index].info" :key="line">{{ line }}</div>
+          </div>
         </div>
         <p v-else class="a-note">Keine Einheit in diesem Zeitraum.</p>
       </section>
