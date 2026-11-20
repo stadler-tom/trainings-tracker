@@ -39,7 +39,7 @@ const showCode = ref(false);
 </script>
 
 <template>
-  <main class="screen start">
+  <main class="screen start" :class="{ 'has-code': codeImage }">
     <header class="bar">
       <h1>Training</h1>
       <button class="ghost" @click="emit('openSettings')">Einstellungen</button>
@@ -123,12 +123,17 @@ const showCode = ref(false);
 </template>
 
 <style scoped>
-.start { min-height: 100dvh; }
+.start.has-code { padding-bottom: calc(env(safe-area-inset-bottom) + 96px); }
+/* fixed to the screen edge, not to the page: stays put while scrolling and when the browser bar changes */
 .code-footer {
-  position: sticky;
+  position: fixed;
+  left: 0;
+  right: 0;
   bottom: 0;
-  margin-top: auto;
-  padding: 8px 0 calc(env(safe-area-inset-bottom) + 4px);
+  z-index: 10;
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 8px 16px calc(env(safe-area-inset-bottom) + 8px);
   background: var(--bg);
 }
 .code-footer button { width: 100%; text-align: center; }
