@@ -1,10 +1,9 @@
 # Meine Checkliste: Version 1 einspielen und Vorlage erstellen
 
-Meine eigene Checkliste für die Umstellung auf die App. Drei Teile, alle am PC, in dieser Reihenfolge:
+Meine eigene Checkliste für die Umstellung auf die App. Zwei Teile, beide am PC, in dieser Reihenfolge:
 
 - **A** stellt mein echtes Sheet auf die App um (etwa 15 Minuten).
 - **B** erstellt einmalig die Vorlage für meine Freunde (etwa 10 Minuten).
-- **C** ersetzt meine Excel-Auswertung (etwa 5 Minuten).
 
 ---
 
@@ -85,14 +84,3 @@ Die Vorlage ist ein eigenes, neues Sheet ohne meine Daten.
 8. Diesen Kopier-Link und den Link zur [Anleitung](ANLEITUNG.md) an meine Freunde schicken. Mehr brauchen sie nicht.
 
 Über den Link sehen sie nur die leere Vorlage, nie mein echtes Sheet.
-
----
-
-## C. Excel-Auswertung ersetzen
-
-1. [Trainings-Auswertung.xlsx](Trainings-Auswertung.xlsx) herunterladen und dort ablegen, wo bisher die alte Datei lag. Die alte Datei kann danach weg.
-2. Öffnen, **Bearbeitung aktivieren** und **Inhalt aktivieren**.
-3. Blatt **Einstellungen**: die drei bisherigen CSV-Links für Log, Übungen und Körper eintragen. Die stehen in der alten Excel-Datei unter **Daten → Abfragen und Verbindungen** (Abfrage anklicken → Bearbeiten → erster Schritt) oder im Google Sheet unter **Datei → Freigeben → Im Web veröffentlichen**.
-4. **Daten → Alle aktualisieren**. Fragt Excel nach dem Zugriff: **Anonym** → **Verbinden**.
-
-Die Übersicht sortiert die Trainingstage jetzt nach dem Wochentag ihres letzten Trainings (bei mir Beine, Push, Pull, Upper). So funktioniert dieselbe Datei auch mit anderen Tagesnamen.

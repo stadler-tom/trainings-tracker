@@ -139,19 +139,6 @@ Die Auswertung ist eine eigene Seite der App für den PC. Dort findest du eine �
 
 Unten links wählst du das Farbschema. Nach einem Training einfach auf **Neu laden** klicken.
 
-## Excel-Auswertung (alt, wird nicht mehr gepflegt)
-
-1. Lade dir die Datei [Trainings-Auswertung.xlsx](Trainings-Auswertung.xlsx) herunter (auf der Seite **Download** bzw. „Download raw file“).
-2. In deinem Google Sheet am PC: **Datei → Freigeben → Im Web veröffentlichen**.
-3. Unter **Link** das Blatt **Log** und das Format **Kommagetrennte Werte (.csv)** wählen, **Veröffentlichen**, Link kopieren.
-4. Die Excel-Datei öffnen, falls nötig **Bearbeitung aktivieren** und **Inhalt aktivieren**, ins Blatt **Einstellungen** wechseln und den Link bei **Log** einfügen.
-5. Schritt 3 und 4 für die Blätter **Übungen** und **Körper** wiederholen.
-6. In Excel **Daten → Alle aktualisieren**. Fragt Excel nach dem Zugriff auf die Webinhalte: **Anonym** wählen und **Verbinden**.
-
-Danach reicht nach jedem Training **Daten → Alle aktualisieren**.
-
-> Wer einen CSV-Link kennt, kann deine Trainingsdaten lesen. Gib die Excel-Datei mit eingetragenen Links also nicht weiter.
-
 ## Wenn etwas nicht klappt
 
 | Meldung in der App | Lösung |

@@ -10,7 +10,7 @@ Ein paar Freunde nutzen den Tracker auch. Jeder hat sein eigenes Sheet, ich sehe
 | --- | --- |
 | `app/` | Web-App (Vue 3, TypeScript, Vite) inklusive PC-Auswertung, läuft über GitHub Pages |
 | `api/` | Script für das Google Sheet: Sheet-Aufbau und Web-API |
-| `template/` | Anleitungen und die alten Auswertungen (Excel, Google Sheets) |
+| `template/` | Anleitungen und Bilder dazu |
 
 ## Aufbau
 
@@ -43,4 +43,4 @@ Getestet wird nie an meinem echten Sheet, nur an einer Kopie oder an der Vorlage
 
 ## Sicherheit
 
-Das Repository ist öffentlich. Hier stehen deshalb **keine** Schlüssel, Web-API-Adressen, CSV-Links oder persönlichen Daten. Die liegen nur in den Einstellungen der App auf dem jeweiligen Handy, in den Script-Eigenschaften des eigenen Sheets oder im Blatt Einstellungen der eigenen Excel-Datei.
+Das Repository ist öffentlich. Hier stehen deshalb **keine** Schlüssel, Web-API-Adressen, CSV-Links oder persönlichen Daten. Die liegen nur in den Einstellungen der App auf dem jeweiligen Handy und in den Script-Eigenschaften des eigenen Sheets.
