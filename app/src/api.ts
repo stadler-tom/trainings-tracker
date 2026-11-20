@@ -70,6 +70,7 @@ export interface TrainingDetail {
     name: string;
     sets: (LoggedSet & { e1rm: number; isPr: boolean; test?: boolean })[];   // test: 1RM test, e1rm = kg (API 1.7.0+)
     limited?: string;              // marked "Eingeschränkt": the reason, '' without one (API 1.8.0+)
+    drops?: { drop: number; kg: number; reps: number }[];   // drop sets after the last set (API 1.10.0+)
   }[];
 }
 
@@ -85,7 +86,11 @@ export interface Day {
 export interface DaySlot {
   id: string;
   sets: number;                    // 1–5
+  superset?: boolean;              // forms a superset with the next exercise (API 1.10.0+)
 }
+
+/** Script version from which supersets and drop sets can be saved. */
+export const SUPERSET_DROP_VERSION = '1.10.0';
 
 export interface State {
   apiVersion: string;
@@ -131,6 +136,7 @@ const MESSAGES: Record<string, string> = {
   missing_weight: 'Bei einer Übung fehlt das Gewicht',
   invalid_reps: 'Bei einer Übung ist eine Wiederholungszahl ungültig',
   invalid_test: 'Ein 1RM-Test hat genau einen Satz mit 1 Wiederholung',
+  invalid_drop: 'Höchstens 3 Drop-Sätze, und keiner bei einem 1RM-Test',
   invalid_setting: 'Ungültiger Wert bei der Einstellung',
   nothing_to_save: 'Es ist noch kein Satz eingetragen.',
   busy: 'Das Sheet ist gerade beschäftigt. Bitte gleich noch einmal versuchen.',
@@ -235,13 +241,14 @@ export interface SaveExercise {
   failure: boolean;                              // marks the last set
   test?: boolean;                                // 1RM test: one set with 1 rep (API 1.7.0+)
   limited?: string | null;                       // "Eingeschränkt": the reason ('' allowed), null = normal (API 1.8.0+)
+  drops?: { kg: number; reps: number }[];        // drop sets after the last set, at most 3 (API 1.10.0+)
 }
 
 export const saveTraining = (settings: Settings, payload: SavePayload) =>
   call<{ savedSets?: number; duplicate?: boolean; state?: State }>(settings, 'saveTraining', payload);   // state since 1.4.0
 
-export const updateDaySlots = (settings: Settings, day: string, exerciseIds: string[]) =>
-  call<{ exerciseIds: string[]; slots?: DaySlot[] }>(settings, 'updateDaySlots', { day, exerciseIds });
+export const updateDaySlots = (settings: Settings, day: string, exerciseIds: string[], supersets: string[] = []) =>
+  call<{ exerciseIds: string[]; slots?: DaySlot[] }>(settings, 'updateDaySlots', { day, exerciseIds, supersets });   // supersets: API 1.10.0+
 
 export const updateExerciseNote = (settings: Settings, id: string, note: string) =>
   call<{ id: string }>(settings, 'updateExerciseNote', { id, note });

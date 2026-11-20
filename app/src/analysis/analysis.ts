@@ -8,10 +8,11 @@ import { addDays } from '../format';
 import { e1rm, formatNumber, perSetText, targetPerSet, targetToday } from '../training';
 
 /**
- * One logged set: [date, day, exercise ID, set, kg, reps, failure, deload, test, limited]
- * (API 1.7.0; limited since 1.8.0: null, or the reason of "Eingeschränkt", '' without one).
+ * One logged set: [date, day, exercise ID, set, kg, reps, failure, deload, test, limited, drop]
+ * (API 1.7.0; limited since 1.8.0: null, or the reason of "Eingeschränkt", '' without one;
+ * drop since 1.10.0: 1, 2, 3 for a drop set after the last set, else null).
  */
-export type LogRow = [string, string, string, number, number, number, boolean, boolean, boolean, (string | null)?];
+export type LogRow = [string, string, string, number, number, number, boolean, boolean, boolean, (string | null)?, (number | null)?];
 
 export interface MuscleGroup {
   name: string;
@@ -21,7 +22,7 @@ export interface MuscleGroup {
 
 export interface AnalysisData {
   apiVersion: string;
-  days: { name: string; exerciseIds: string[]; weekdays?: number[]; slots?: { id: string; sets: number }[] }[];   // tab order
+  days: { name: string; exerciseIds: string[]; weekdays?: number[]; slots?: { id: string; sets: number; superset?: boolean }[] }[];   // tab order
   exercises: Exercise[];
   muscleGroups: MuscleGroup[];
   log: LogRow[];
@@ -37,7 +38,8 @@ export interface Session {
   kgs: number[];                   // weight of every set, in set order (can differ since API 1.8.0)
   reps: number[];                  // in set order
   e1rm: number;                    // best set; with added weight incl. body weight, like the app
-  volume: number;                  // sum of kg × reps (like the app's summary)
+  volume: number;                  // sum of kg × reps incl. drop sets (like the app's summary)
+  drops: { kg: number; reps: number }[];   // drop sets after the last set (API 1.10.0+): only volume
   isRecord: boolean;               // new best e1RM against all earlier regular sessions (not the first one)
   limited: string | null;          // "Eingeschränkt": the reason ('' without one); kept out of the progression
 }
@@ -73,29 +75,32 @@ export function bodyWeightOn(body: BodyEntry[], date: string): number | null {
 export function exerciseStats(exercise: Exercise, log: LogRow[], body: BodyEntry[]): ExerciseStats {
   const addedWeight = exercise.weightType === 'Zusatzgewicht';
   const byKey = new Map<string, { date: string; day: string; deload: boolean; limited: string | null;
-    sets: { set: number; kg: number; reps: number; failure: boolean }[] }>();
+    sets: { set: number; kg: number; reps: number; failure: boolean }[]; drops: { drop: number; kg: number; reps: number }[] }>();
   const tests: OneRmTest[] = [];
-  for (const [date, day, id, set, kg, reps, failure, deload, test, limited] of log) {
+  for (const [date, day, id, set, kg, reps, failure, deload, test, limited, drop] of log) {
     if (id !== exercise.id) continue;
     if (test) { tests.push({ date, kg }); continue; }
     const key = `${date}|${day}`;
-    const entry = byKey.get(key) ?? { date, day, deload: false, limited: null, sets: [] };
+    const entry = byKey.get(key) ?? { date, day, deload: false, limited: null, sets: [], drops: [] };
     entry.deload = entry.deload || deload;
     if (limited != null) entry.limited = limited;
-    entry.sets.push({ set, kg, reps, failure });
+    if (drop != null && drop > 0) entry.drops.push({ drop, kg, reps });       // drop set: volume only
+    else entry.sets.push({ set, kg, reps, failure });
     byKey.set(key, entry);
   }
   let best = 0;
   let bestSession: Session | null = null;
   const sessions: Session[] = [...byKey.values()]
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
+    .filter((entry) => entry.sets.length > 0)
     .map((entry) => {
       const sets = [...entry.sets].sort((a, b) => a.set - b.set);
+      const drops = [...entry.drops].sort((a, b) => a.drop - b.drop).map((d) => ({ kg: d.kg, reps: d.reps }));
       const bodyWeight = addedWeight ? bodyWeightOn(body, entry.date) ?? 0 : 0;
       const value = Math.max(...sets.map((s) => e1rm(s.kg + bodyWeight, s.reps)));
       const session: Session = {
         date: entry.date, day: entry.day, deload: entry.deload, kg: sets[0].kg, kgs: sets.map((s) => s.kg), reps: sets.map((s) => s.reps),
-        e1rm: value, volume: sets.reduce((sum, s) => sum + s.kg * s.reps, 0), isRecord: false, limited: entry.limited,
+        e1rm: value, volume: [...sets, ...drops].reduce((sum, s) => sum + s.kg * s.reps, 0), drops, isRecord: false, limited: entry.limited,
       };
       if (!entry.deload && entry.limited === null) {
         session.isRecord = bestSession !== null && value > best + 1e-9;
@@ -207,12 +212,12 @@ export function weeklySets(data: AnalysisData, weeks: string[]): Map<string, Gro
     return result.get(group)!;
   };
   data.muscleGroups.forEach((g) => row(g.name));
-  for (const [date, , id, , , , , deload, test] of data.log) {
+  for (const [date, , id, , , , , deload, test, , drop] of data.log) {
     const i = index.get(weekStart(date));
     if (i === undefined) continue;
     if (deload) deloadWeeks.add(i);
     const group = groupOf.get(id);
-    if (test || !group) continue;
+    if (test || !group || (drop != null && drop > 0)) continue;   // drop sets do not count as sets of the week
     row(group)[i].sets++;
   }
   for (const values of result.values()) deloadWeeks.forEach((i) => { values[i].deload = true; });
@@ -239,7 +244,8 @@ export function trainingCount(log: LogRow[], from: string, to: string): number {
 export function sessionText(session: Session): string {
   const same = session.kgs.every((kg) => kg === session.kgs[0]);
   const weights = same ? formatNumber(session.kg) : session.kgs.map((kg) => formatNumber(kg)).join('/');
-  return `${weights} kg × ${session.reps.join('/')}`;
+  const drops = session.drops.map((d) => `${formatNumber(d.kg)} kg × ${d.reps}`).join(', ');
+  return `${weights} kg × ${session.reps.join('/')}${drops ? ` + Drop ${drops}` : ''}`;
 }
 
 /** "−1,7" / "+2,5" with a real minus sign. */

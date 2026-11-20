@@ -13,7 +13,7 @@
  * Error codes are English; the app shows German messages.
  */
 
-const API_VERSION = '1.9.0';   // 1.9.0: settings editable from the app; 1.8.0: day sheets as training plan (weekdays, sets), weight per set, "Eingeschränkt"
+const API_VERSION = '1.10.0';   // 1.10.0: supersets in the day sheets, drop sets in the log; 1.9.0: settings editable from the app; 1.8.0: day sheets as training plan (weekdays, sets), weight per set, "Eingeschränkt"
 const APP_URL = 'https://stadler-tom.github.io/trainings-tracker/';
 const ANALYSIS_URL = APP_URL + 'auswertung/';
 const KEY_PROPERTY = 'API_KEY';
@@ -197,7 +197,7 @@ function buildState_(ss, daySheets, exercises, logRows, extras) {
       const key = dateKey + '|' + day;
       const t = trainings[key] || (trainings[key] = { date: dateKey, day: day, deload: false, sets: 0, volume: 0, ids: {} });
       t.deload = t.deload || deload;
-      t.sets++;
+      if (!isDropRow_(r)) t.sets++;
       if (!isTestRow_(r)) t.volume += kg * reps;
       t.ids[id] = true;
     }
@@ -207,7 +207,7 @@ function buildState_(ss, daySheets, exercises, logRows, extras) {
       if (!ht.bestTest || kg > ht.bestTest.kg) ht.bestTest = { kg: kg, date: dateKey };
       return;
     }
-    if (deload || isLimitedRow_(r)) return;    // limited (since 1.8.0): counts as training, not for the progression
+    if (deload || isLimitedRow_(r) || isDropRow_(r)) return;   // limited (1.8.0) and drops (1.10.0): not for the progression
 
     const value = e1rmOf_(kg, reps, weightTypeById[id] === VALUE.addedWeight ? bodyWeightAt(dateKey) : null);
     const byDate = e1rmByDate[id] || (e1rmByDate[id] = {});
@@ -248,7 +248,7 @@ function buildState_(ss, daySheets, exercises, logRows, extras) {
     // weekdays (since 1.8.0): ISO numbers from the sheet (Monday = 1); slots (since 1.8.0): exercise and number of sets
     return { name: name, lastDate: dates[0] || null, recentDates: dates.slice(0, RECENT_DATES),
       exerciseIds: slots.map(function (slot) { return slot.id; }), weekdays: readWeekdays_(sheet),
-      slots: slots.map(function (slot) { return { id: slot.id, sets: slot.sets }; }) };
+      slots: slots.map(function (slot) { return { id: slot.id, sets: slot.sets, superset: slot.superset }; }) };
   });
 
   return {
@@ -288,6 +288,8 @@ function bodyWeightLookup_(body) {
  * sets: only the sets done, in order (1–5); failure marks the last set.
  * test (since 1.7.0): a 1RM test, exactly one set with 1 rep; logged with "1RM-Test" = 1.
  * limited (since 1.8.0): null, or the reason ('' allowed); logged in "Eingeschränkt" (reason or "ja").
+ * drops (since 1.10.0): [{ kg, reps }] after the last set, at most 3; logged with the set number of the last
+ * set and "Drop" = 1, 2, 3. Not with a 1RM test.
  * The log is append-only: the app never changes or removes saved rows (corrections only by hand in the sheet).
  */
 function saveTrainingFromApp_(p) {
@@ -320,10 +322,18 @@ function saveTrainingFromApp_(p) {
     const isTest = item.test === true;
     if (isTest && (sets.length !== 1 || sets[0].reps !== 1)) return { ok: false, error: 'invalid_test', detail: ex.name };
     const limited = typeof item.limited === 'string' ? (item.limited.trim().slice(0, 200) || VALUE.yes) : '';
+    const drops = Array.isArray(item.drops) ? item.drops : [];
+    if (drops.length > MAX_DROPS || (isTest && drops.length)) return { ok: false, error: 'invalid_drop', detail: ex.name };
+    if (drops.some(function (s) { return !s || typeof s.kg !== 'number' || !(s.kg >= 0); })) return { ok: false, error: 'missing_weight', detail: ex.name };
+    if (drops.some(function (s) { return !(s.reps > 0) || Math.floor(s.reps) !== s.reps; })) return { ok: false, error: 'invalid_reps', detail: ex.name };
     sets.forEach(function (s, index) {
       rows.push([date, day, ex.id, ex.name, ex.muscleGroup, index + 1, s.kg, s.reps,
         !isTest && item.failure === true && index === sets.length - 1, p.deload === true, now, String(p.note || ''),
-        isTest ? 1 : '', limited]);
+        isTest ? 1 : '', limited, '']);
+    });
+    drops.forEach(function (s, index) {
+      rows.push([date, day, ex.id, ex.name, ex.muscleGroup, sets.length, s.kg, s.reps, false, p.deload === true, now,
+        String(p.note || ''), '', limited, index + 1]);
     });
   }
   if (!rows.length) return { ok: false, error: 'nothing_to_save' };
@@ -334,7 +344,7 @@ function saveTrainingFromApp_(p) {
   if (logRows.some(function (r) { return isTrainingRow_(r, dateText, day, tz); })) return { ok: false, error: 'already_saved' };
 
   const allRows = logRows.concat(rows);
-  ensureLogColumns_(ss);                                   // a log from before 1.8.0 gets columns M and N
+  ensureLogColumns_(ss);                                   // an older log gets columns M, N and O
   ss.getSheetByName(SHEET.log).getRange(logRows.length + 2, 1, rows.length, LOG_HEADER.length).setValues(rows);
   rememberClientId_(p.clientId);
   // state (since 1.4.0): the app needs no second request to show the new "zuletzt" and targets
@@ -343,8 +353,9 @@ function saveTrainingFromApp_(p) {
 }
 
 /**
- * Writes the exercise order of one day sheet (section 4.2). Payload: { day, exerciseIds: [...] }
+ * Writes the exercise order of one day sheet (section 4.2). Payload: { day, exerciseIds: [...], supersets?: [...] }
  * Exercises that stay keep their number of sets; new ones get the default (4).
+ * supersets (since 1.10.0): IDs linked with the next exercise; without it the links stay with their exercises.
  */
 function updateDaySlots_(p) {
   const ss = SpreadsheetApp.getActive();
@@ -356,12 +367,16 @@ function updateDaySlots_(p) {
   const ctx = loadContext_(ss);
   if (ids.some(function (id) { return !ctx.exercises[id]; })) return { ok: false, error: 'unknown_exercise' };
   const setsById = {};
-  readDaySlots_(sheet, ctx).forEach(function (slot) { setsById[slot.id] = slot.sets; });
-  const used = ids.map(function (id) {
-    return { id: id, name: ctx.exercises[id].name, sets: setsById[id] || SET_LIMITS.default };
+  const linked = {};
+  readDaySlots_(sheet, ctx).forEach(function (slot) { setsById[slot.id] = slot.sets; linked[slot.id] = slot.superset; });
+  const supersets = Array.isArray(p.supersets) ? p.supersets.map(String) : null;
+  const used = ids.map(function (id, index) {
+    const superset = index < ids.length - 1 && (supersets ? supersets.indexOf(id) >= 0 : linked[id] === true);
+    return { id: id, name: ctx.exercises[id].name, sets: setsById[id] || SET_LIMITS.default, superset: superset };
   });
   writeDaySlots_(sheet, used, ctx);
-  return { ok: true, data: { exerciseIds: ids, slots: used.map(function (slot) { return { id: slot.id, sets: slot.sets }; }) } };
+  return { ok: true, data: { exerciseIds: ids,
+    slots: used.map(function (slot) { return { id: slot.id, sets: slot.sets, superset: hasSupersetColumn_(sheet) && slot.superset }; }) } };
 }
 
 /** Saves the equipment note of one exercise (section 4.6). Payload: { id, note } */
@@ -413,10 +428,14 @@ function getTraining_(p) {
         result.exercises.push(ex);
       }
       if (isLimitedRow_(r)) ex.limited = limitedReason_(r);
+      if (isDropRow_(r)) {                                   // drops (since 1.10.0): listed apart, never a record
+        (ex.drops || (ex.drops = [])).push({ drop: Number(r[LOG.drop]), kg: kg, reps: reps });
+        return;
+      }
       const isTest = isTestRow_(r);
       ex.sets.push({ set: Number(r[LOG.set]), kg: kg, reps: reps, failure: r[LOG.failure] === true,
         e1rm: isTest ? kg : Math.round(value * 10) / 10, isPr: false, test: isTest });
-    } else if (dateKey < result.date) {
+    } else if (dateKey < result.date && !isDropRow_(r)) {
       const b = best[id] || (best[id] = { kgAtMin: null, testKg: null });
       if (isTestRow_(r)) {
         b.testKg = Math.max(b.testKg || 0, kg);
@@ -428,6 +447,7 @@ function getTraining_(p) {
   if (!result.exercises.length) return { ok: false, error: 'unknown_training' };
   result.exercises.forEach(function (ex) {
     ex.sets.sort(function (a, b) { return a.set - b.set; });
+    if (ex.drops) ex.drops.sort(function (a, b) { return a.drop - b.drop; });
     ex.sets.filter(function (s) { return s.test; }).forEach(function (s) {   // new best 1RM test, also in a deload week
       const before = best[ex.id] && best[ex.id].testKg;
       s.isPr = !before || s.kg > before;
@@ -503,7 +523,8 @@ function getAnalysis_() {
     const date = r[LOG.date], id = r[LOG.exerciseId], kg = r[LOG.kg], reps = r[LOG.reps];
     if (!(date instanceof Date) || !id || typeof kg !== 'number' || typeof reps !== 'number') return;
     log.push([Utilities.formatDate(date, tz, 'yyyy-MM-dd'), String(r[LOG.day] || ''), String(id), Number(r[LOG.set]) || 1,
-      kg, reps, r[LOG.failure] === true, r[LOG.deload] === true, isTestRow_(r), isLimitedRow_(r) ? limitedReason_(r) : null]);
+      kg, reps, r[LOG.failure] === true, r[LOG.deload] === true, isTestRow_(r), isLimitedRow_(r) ? limitedReason_(r) : null,
+      isDropRow_(r) ? Number(r[LOG.drop]) : null]);
   });
   log.sort(function (a, b) { return a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : a[3] - b[3]; });
   return {
@@ -511,7 +532,7 @@ function getAnalysis_() {
     days: days.map(function (sheet) {                // tab order, with the exercises of each day sheet
       const slots = readDaySlots_(sheet, { idByName: idByName });
       return { name: sheet.getName(), weekdays: readWeekdays_(sheet), exerciseIds: slots.map(function (slot) { return slot.id; }),
-        slots: slots.map(function (slot) { return { id: slot.id, sets: slot.sets }; }) };
+        slots: slots.map(function (slot) { return { id: slot.id, sets: slot.sets, superset: slot.superset }; }) };
     }),
     exercises: exercises,
     muscleGroups: readMuscleGroups_(ss),

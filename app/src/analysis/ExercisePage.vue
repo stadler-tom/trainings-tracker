@@ -103,10 +103,13 @@ const bars = computed(() => {
   const max = Math.max(...list.map((x) => x.volume), 1);
   return list.map((x, i) => ({
     height: `${((100 * x.volume) / max).toFixed(1)}%`,
+    // share of the drop sets, drawn lighter on top of the bar
+    dropShare: `${((100 * x.drops.reduce((sum, d) => sum + d.kg * d.reps, 0)) / Math.max(x.volume, 1)).toFixed(1)}%`,
     last: i === list.length - 1,
     date: x.date,
     // lines of the hover box, like the points of the e1RM chart
-    info: [`Volumen ${Math.round(x.volume).toLocaleString('de-DE')} kg`, sessionText(x), ...(x.deload ? ['Deload'] : []),
+    info: [`Volumen ${Math.round(x.volume).toLocaleString('de-DE')} kg`, sessionText(x),
+      ...(x.drops.length ? [`davon Drop ${Math.round(x.drops.reduce((sum, d) => sum + d.kg * d.reps, 0)).toLocaleString('de-DE')} kg`] : []), ...(x.deload ? ['Deload'] : []),
       ...(x.limited !== null ? [x.limited ? `eingeschränkt: ${x.limited}` : 'eingeschränkt'] : [])],
   }));
 });
@@ -133,7 +136,7 @@ const rows = computed(() => {
   if (!s) return [];
   const sessions = s.sessions.map((x) => ({
     date: x.date, kg: x.kgs.every((kg) => kg === x.kg) ? formatNumber(x.kg) : x.kgs.map((kg) => formatNumber(kg)).join(' / '),
-    sets: x.reps.join(' / ') + (x.deload ? ' (Deload)' : '') + (x.limited !== null ? ` (eingeschränkt${x.limited ? `: ${x.limited}` : ''})` : ''),
+    sets: x.reps.join(' / ') + x.drops.map((d) => ` + Drop ${formatNumber(d.kg)} × ${d.reps}`).join('') + (x.deload ? ' (Deload)' : '') + (x.limited !== null ? ` (eingeschränkt${x.limited ? `: ${x.limited}` : ''})` : ''),
     e1rm: oneDecimal(x.e1rm), volume: `${Math.round(x.volume).toLocaleString('de-DE')} kg`, strong: x.isRecord, test: false,
   }));
   const tests = s.tests.map((t) => ({
@@ -212,12 +215,18 @@ const rows = computed(() => {
         <div class="a-bar" style="gap: 8px">
           <h2>Volumen je Einheit (kg × Wdh)</h2>
         </div>
+        <div v-if="bars?.some((b) => b.dropShare !== '0.0%')" class="a-legend">
+          <span><span class="a-dot" style="width: 10px; height: 10px; border-radius: 2px; background: color-mix(in srgb, var(--a-chart) 35%, var(--a-surface))"></span>Anteil Drop-Sätze</span>
+        </div>
         <div v-if="bars" ref="barsBox" style="position: relative" @mouseleave="hoveredBar = null">
           <div role="img" aria-label="Säulenchart Volumen je Einheit"
             :style="{ height: '180px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: bars.length > 20 ? '2px' : '2%', borderBottom: '1px solid var(--a-line)' }">
             <div v-for="(b, i) in bars" :key="i" class="a-bar-col" @mousemove="onBarMove(i, $event)"
               :style="{ flex: '1 1 0', maxWidth: '25%', height: b.height, background: b.last ? 'var(--a-chart)' : 'var(--a-neutral)', borderRadius: '3px 3px 0 0',
-                outline: hoveredBar?.index === i ? '2px solid var(--a-text)' : 'none', outlineOffset: '1px' }"></div>
+                outline: hoveredBar?.index === i ? '2px solid var(--a-text)' : 'none', outlineOffset: '1px' }">
+              <div v-if="b.dropShare !== '0.0%'" class="a-bar-drop"
+                :style="{ height: b.dropShare, background: 'color-mix(in srgb, var(--a-chart) 35%, var(--a-surface))', borderRadius: '3px 3px 0 0' }"></div>
+            </div>
           </div>
           <div v-if="hoveredBar" class="a-chart-info" :style="hoveredBar.style" role="status">
             <strong>{{ formatIsoDate(bars[hoveredBar.index].date) }}</strong>

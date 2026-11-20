@@ -27,7 +27,7 @@ Im Sheet **Datei → Kopie erstellen** und die Kopie zum Beispiel „Sicherung T
 2. Fragt Google nach Berechtigungen, bestätigst du sie wie bei der Einrichtung (**Erweitert → Zu … wechseln → Zulassen**).
 3. Im Tab mit dem Sheet die Meldung lesen und mit **OK** schließen. Steht dort **ACHTUNG Muskelgruppen**, schau bei Version 1.7.0 unten nach.
 
-setupApi ergänzt nur, was fehlt. Es ändert nichts im Log und erzeugt keinen neuen Schlüssel. Einzige Ausnahme: Beim Update auf 1.8.0 baut es die Tagesblätter einmal um (siehe unten).
+setupApi ergänzt nur, was fehlt. Es ändert nichts im Log und erzeugt keinen neuen Schlüssel. Ausnahmen: Beim Update auf 1.8.0 und auf 1.10.0 baut es die Tagesblätter einmal um (siehe unten).
 
 ## 4. Neue Version bereitstellen, gleiche Adresse
 
@@ -41,6 +41,14 @@ setupApi ergänzt nur, was fehlt. Es ändert nichts im Log und erzeugt keinen ne
 ## 5. Prüfen
 
 In der App **Einstellungen → Verbindung testen**. Die Meldung zeigt jetzt die neue Web-API-Version, und der Hinweis „veraltet“ ist weg.
+
+## Neu in Version 1.10.0
+
+**Supersätze.** Tippst du in der App bei einer Übung auf 🔗, bildet sie mit der nächsten Übung einen Supersatz. Die Karten stehen dann in einem gemeinsamen Rahmen mit A, B …, und der nächste offene Satz ist markiert: A1 → B1 → A2 → B2. Im Tagesblatt gibt es dafür die neue Spalte **Supersatz** (Haken = mit der nächsten Übung verbunden). Ziel, Rekorde und Progression laufen pro Übung wie bisher.
+
+**Drop-Sätze.** Unter den Sätzen einer Übung gibt es **+ Drop**. Das Gewicht ist 20 % leichter vorbelegt, du trägst nur noch die Wiederholungen ein. Bis zu 3 Drops gehen. Im Log stehen sie in der neuen Spalte **Drop** (Spalte O: 1, 2, 3). Drop-Sätze zählen beim Volumen in kg mit, aber nicht für Ziel, Rekorde und Progression und auch nicht bei den Sätzen pro Woche. In der PC-Auswertung ist ihr Anteil in der Volumen-Säule heller oben drauf.
+
+**Tagesblätter.** setupApi baut jedes Tagesblatt einmal um und fügt die Spalte Supersatz ein. Wochentage, Übungen, Reihenfolge und Sätze bleiben, das Log wird nicht angefasst. Bis du das Update gemacht hast, blendet die App 🔗 und + Drop einfach aus, alles andere läuft weiter.
 
 ## Neu in Version 1.9.0
 

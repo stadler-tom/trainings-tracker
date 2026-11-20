@@ -18,6 +18,7 @@ export interface SummaryExercise {
   name: string;
   sets: SummarySet[];
   limited?: string;                // marked "Eingeschränkt": the reason, '' without one
+  drops?: { kg: number; reps: number }[];   // drop sets: only volume, never a record
 }
 
 export interface Summary {
@@ -52,6 +53,8 @@ export function buildSummary(payload: SavePayload, before: State | null): Summar
       return { set: index + 1, kg: set.kg, reps: set.reps, e1rm: e1rm(set.kg + addedBody, set.reps), isPr: false };
     });
     if (!sets.length) continue;
+    const drops = item.drops ?? [];
+    for (const drop of drops) volume += drop.kg * drop.reps;
     // the record is the heaviest set with the minimum reps if its weight beats all earlier trainings
     // (same rule as in the card); an exercise marked "Eingeschränkt" is never a record
     if (exercise && item.limited == null) {
@@ -61,7 +64,7 @@ export function buildSummary(payload: SavePayload, before: State | null): Summar
         prCount++;
       }
     }
-    exercises.push({ name: exercise?.name ?? item.id, sets, limited: item.limited ?? undefined });
+    exercises.push({ name: exercise?.name ?? item.id, sets, limited: item.limited ?? undefined, ...(drops.length ? { drops } : {}) });
   }
   return { day: payload.day, date: payload.date, deload: payload.deload, volume, prCount, exercises, note: payload.note };
 }
@@ -76,7 +79,9 @@ export function summaryFromDetail(detail: TrainingDetail): Summary {
       if (set.isPr) prCount++;
       return { set: set.set, kg: set.kg, reps: set.reps, e1rm: set.e1rm, isPr: set.isPr, test: set.test };
     });
-    return { name: exercise.name, sets, limited: exercise.limited };
+    const drops = (exercise.drops ?? []).map((d) => ({ kg: d.kg, reps: d.reps }));
+    for (const drop of drops) volume += drop.kg * drop.reps;
+    return { name: exercise.name, sets, limited: exercise.limited, ...(drops.length ? { drops } : {}) };
   });
   return { day: detail.day, date: detail.date, deload: detail.deload, volume, prCount, exercises, note: detail.note };
 }

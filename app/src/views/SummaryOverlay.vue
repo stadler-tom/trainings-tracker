@@ -39,6 +39,10 @@ const fun = funComparison(props.summary.volume);   // picked once per summary
           <span><span class="nr">{{ set.set }}</span>{{ formatNumber(set.kg) }} kg × {{ set.reps }}<span v-if="set.test"> · 1RM-Test</span><span v-if="set.isPr"> 🏆</span></span>
           <span class="muted">{{ set.test ? formatNumber(set.kg) : Math.round(set.e1rm) }}</span>
         </div>
+        <div v-for="(drop, index) in exercise.drops ?? []" :key="`drop-${index}`" class="row drop">
+          <span><span class="nr">↳</span>Drop {{ formatNumber(drop.kg) }} kg × {{ drop.reps }}</span>
+          <span class="muted">–</span>
+        </div>
       </div>
 
       <p v-if="summary.note" class="note">📝 {{ summary.note }}</p>
@@ -50,6 +54,7 @@ const fun = funComparison(props.summary.volume);   // picked once per summary
 
 <style scoped>
 .limited { margin: 2px 0 4px; }
+.drop { color: var(--muted); font-size: 0.9rem; }
 .backdrop {
   position: fixed;
   inset: 0;

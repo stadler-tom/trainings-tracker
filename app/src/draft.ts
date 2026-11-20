@@ -11,6 +11,8 @@ import { formatNumber, targetPerSet, targetToday } from './training';
 
 export const SET_COUNT = 4;          // default number of sets (day sheets from API 1.8.0 set 1–5 per exercise)
 export const MAX_EXERCISES = 15;     // slots per day sheet
+export const MAX_DROPS = 3;          // drop sets after the last set (API 1.10.0+)
+export const DROP_FACTOR = 0.8;      // a new drop starts 20 % lighter than the weight before it
 
 export interface DraftItem {
   id: string;
@@ -22,6 +24,8 @@ export interface DraftItem {
   test?: boolean;                    // 1RM test: one set with 1 rep, kept out of the progression
   limited?: boolean;                 // "Eingeschränkt": pain or stopped early, kept out of the progression
   reason?: string;                   // optional reason for "Eingeschränkt"
+  superset?: boolean;                // forms a superset with the next exercise (API 1.10.0+)
+  drops?: { kg: string; reps: string }[];   // drop sets after the last set, as typed (API 1.10.0+)
 }
 
 export interface Draft {
@@ -94,7 +98,7 @@ export function newItem(state: State, id: string, deload: boolean, setCount = SE
 }
 
 /** Exercises of a day with their number of sets (API 1.8.0+), else 4 sets each. */
-export function daySlots(state: State, day: string): { id: string; sets: number }[] {
+export function daySlots(state: State, day: string): { id: string; sets: number; superset?: boolean }[] {
   const entry = state.days.find((d) => d.name === day);
   if (!entry) return [];
   return entry.slots ?? entry.exerciseIds.map((id) => ({ id, sets: SET_COUNT }));
@@ -109,7 +113,7 @@ export function newDraft(state: State, day: string, date = todayIso()): Draft {
     date,
     deload,
     note: '',
-    items: daySlots(state, day).map((slot) => newItem(state, slot.id, deload, slot.sets)),
+    items: daySlots(state, day).map((slot) => ({ ...newItem(state, slot.id, deload, slot.sets), superset: slot.superset === true })),
     touched: false,
     perSet: state.perSetWeight === true,
   };
@@ -125,9 +129,28 @@ export function parseKg(text: string): number | null {
 
 /**
  * Input that needs fixing: the date, or in exercise itemIndex the weight ('kg'),
- * the weight of one set ('kg-<index>', mode "Gewicht pro Satz") or the reps of one set (its index).
+ * the weight of one set ('kg-<index>', mode "Gewicht pro Satz"), the reps of one set (its index),
+ * or the weight or reps of a drop set ('drop-kg-<index>', 'drop-<index>').
  */
-export type InvalidField = 'date' | 'kg' | `kg-${number}` | number;
+export type InvalidField = 'date' | 'kg' | `kg-${number}` | `drop-kg-${number}` | `drop-${number}` | number;
+
+/**
+ * Weight of a new drop: 20 % below the weight before it (the last drop, else the last set),
+ * rounded down to the exercise's weight step (0,5 kg without one); '' if nothing sensible is left.
+ */
+export function dropKg(item: DraftItem, perSet: boolean, increment: number): string {
+  const lastDrop = item.drops?.[item.drops.length - 1];
+  let base = lastDrop ? parseKg(lastDrop.kg) : null;
+  if (base === null) {
+    const done = item.reps.map((r, i) => (r.trim() !== '' ? i : -1)).filter((i) => i >= 0);
+    const index = done.length ? done[done.length - 1] : item.reps.length - 1;
+    base = parseKg(perSet ? item.kgs?.[index] ?? '' : item.kg);
+  }
+  if (base === null || base <= 0) return '';
+  const step = increment > 0 ? increment : 0.5;
+  const kg = Math.floor((base * DROP_FACTOR) / step + 1e-9) * step;
+  return kg > 0 ? formatNumber(Math.round(kg * 1000) / 1000) : '';
+}
 
 export type BuildResult =
   | { payload: SavePayload; sets: number }
@@ -148,7 +171,11 @@ export function buildPayload(draft: Draft): BuildResult {
       continue;
     }
     const filled = item.reps.map((r) => r.trim());
-    if (filled.every((r) => r === '')) continue;                 // exercise not done
+    const drops = (item.drops ?? []).map((d) => ({ kg: d.kg.trim(), reps: d.reps.trim() }));
+    if (filled.every((r) => r === '')) {
+      if (drops.some((d) => d.reps !== '')) return { error: `Bei „${item.name}“ gibt es einen Drop-Satz, aber keinen normalen Satz.`, itemIndex, field: 0 };
+      continue;                                                  // exercise not done
+    }
     const shared = draft.perSet ? null : parseKg(item.kg);
     if (!draft.perSet && shared === null) return { error: `Bei „${item.name}“ fehlt das Gewicht.`, itemIndex, field: 'kg' };
     const done: SaveExercise['sets'] = [];
@@ -163,7 +190,19 @@ export function buildPayload(draft: Draft): BuildResult {
       done.push({ kg, reps: value });
       sets++;
     }
-    exercises.push({ id: item.id, sets: done, failure: item.failure, limited: item.limited ? (item.reason ?? '').trim() : null });
+    const doneDrops: { kg: number; reps: number }[] = [];
+    for (const [i, drop] of drops.entries()) {
+      if (drop.reps === '') continue;                            // drop prepared but not done
+      const value = Number(drop.reps);
+      if (!Number.isInteger(value) || value <= 0) {
+        return { error: `Bei „${item.name}“ ist Drop ${i + 1} keine gültige Wiederholungszahl.`, itemIndex, field: `drop-${i}` };
+      }
+      const kg = parseKg(drop.kg);
+      if (kg === null) return { error: `Bei „${item.name}“ fehlt bei Drop ${i + 1} das Gewicht.`, itemIndex, field: `drop-kg-${i}` };
+      doneDrops.push({ kg, reps: value });
+    }
+    exercises.push({ id: item.id, sets: done, failure: item.failure, limited: item.limited ? (item.reason ?? '').trim() : null,
+      ...(doneDrops.length ? { drops: doneDrops } : {}) });
   }
   if (sets === 0) return { error: 'Es ist noch kein Satz eingetragen.' };
   return {

@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue';
 import type { Exercise, ExerciseHistory } from '../api';
 import { signedKg } from '../body';
-import { parseKg, type DraftItem, type InvalidField } from '../draft';
+import { dropKg, MAX_DROPS, parseKg, type DraftItem, type InvalidField } from '../draft';
 import { randomRecordPicture } from '../recordPictures';
 import { checkRecord, checkTestRecord, formatNumber, lastText, perSetText, stepValue, targetPerSet, targetToday } from '../training';
 import RecordBanner from './RecordBanner.vue';
@@ -16,8 +16,11 @@ const props = defineProps<{
   isLast: boolean;
   invalidField?: Exclude<InvalidField, 'date'> | null;   // input marked after a failed save
   perSet?: boolean;                      // mode "Gewicht pro Satz": one weight field per set (API 1.8.0+)
+  letter?: string;                       // position in a superset: A, B, C
+  nextSet?: number | null;               // in a superset: the set to do next in this exercise
+  extras?: boolean;                      // script 1.10.0+: superset link and drop sets available
 }>();
-const emit = defineEmits<{ changed: []; move: [direction: -1 | 1]; remove: []; saveNote: [note: string]; showTools: [] }>();
+const emit = defineEmits<{ changed: []; move: [direction: -1 | 1]; remove: []; saveNote: [note: string]; showTools: []; toggleLink: [] }>();
 
 const target = computed(() => (props.exercise ? targetToday(props.exercise, props.history, props.deload) : null));
 // mode "Gewicht pro Satz": every set has its own target (double progression per set)
@@ -117,7 +120,20 @@ function toggleTest() {
   if (props.item.test) {
     props.item.reps = props.item.reps.map(() => '');
     props.item.failure = false;
+    props.item.drops = [];
   }
+  emit('changed');
+}
+
+// ----- drop sets after the last set (API 1.10.0+) -----
+const canAddDrop = computed(() => props.extras === true && !props.item.test && (props.item.drops?.length ?? 0) < MAX_DROPS);
+function addDrop() {
+  const drops = props.item.drops ?? (props.item.drops = []);
+  drops.push({ kg: dropKg(props.item, props.perSet === true, increment.value), reps: '' });
+  emit('changed');
+}
+function removeDrop(index: number) {
+  props.item.drops?.splice(index, 1);
   emit('changed');
 }
 
@@ -143,8 +159,11 @@ function finishNote() {
 <template>
   <section class="card exercise" :class="{ invalid: invalidField != null }">
     <div class="title">
-      <h2>{{ exercise?.name ?? item.name }}</h2>
+      <h2><span v-if="letter" class="letter">{{ letter }}</span>{{ exercise?.name ?? item.name }}</h2>
       <div class="order">
+        <button v-if="extras" class="link-toggle" :class="{ on: item.superset && !isLast }" :disabled="isLast" :aria-pressed="item.superset && !isLast"
+          :aria-label="item.superset ? 'Supersatz mit der nächsten Übung lösen' : 'Mit der nächsten Übung als Supersatz verbinden'"
+          @click="emit('toggleLink')">🔗</button>
         <button aria-label="Nach oben" :disabled="isFirst" @click="emit('move', -1)">↑</button>
         <button aria-label="Nach unten" :disabled="isLast" @click="emit('move', 1)">↓</button>
         <button aria-label="Entfernen" @click="emit('remove')">✕</button>
@@ -225,7 +244,7 @@ function finishNote() {
           pattern="[0-9]*"
           autocomplete="off"
           :placeholder="repsPlaceholder(index)"
-          :class="{ filled: String(item.reps[index] ?? '').trim() !== '' }"
+          :class="{ filled: String(item.reps[index] ?? '').trim() !== '', next: nextSet === index && String(item.reps[index] ?? '').trim() === '' }"
           :aria-label="`Satz ${index + 1} Wiederholungen`"
           @focus="selectAll"
           @input="emit('changed')"
@@ -233,6 +252,25 @@ function finishNote() {
         <button class="step" :aria-label="`Satz ${index + 1} weniger`" @click="stepReps(index, -1)">−</button>
       </div>
     </div>
+
+    <div v-if="item.drops?.length && !item.test" class="drops">
+      <div v-for="(drop, index) in item.drops" :key="index" class="drop"
+        :class="{ invalid: invalidField === `drop-${index}`, 'invalid-kg': invalidField === `drop-kg-${index}` }">
+        <span class="muted small">Drop {{ index + 1 }}</span>
+        <label class="drop-kg">
+          <input v-model="drop.kg" type="text" inputmode="decimal" autocomplete="off" placeholder="kg"
+            :aria-label="`Drop ${index + 1} Gewicht`" @focus="selectAll" @input="emit('changed')" />
+          <span class="muted small">kg</span>
+        </label>
+        <label class="drop-reps">
+          <input v-model="drop.reps" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="Wdh"
+            :class="{ filled: drop.reps.trim() !== '' }" :aria-label="`Drop ${index + 1} Wiederholungen`" @focus="selectAll" @input="emit('changed')" />
+          <span class="muted small">Wdh</span>
+        </label>
+        <button class="remove-drop" :aria-label="`Drop ${index + 1} entfernen`" @click="removeDrop(index)">✕</button>
+      </div>
+    </div>
+    <button v-if="canAddDrop" class="add-drop" @click="addDrop">+ Drop <span class="muted small">(−20 % Gewicht)</span></button>
 
     <button v-if="!showWeightRow && hasTools" class="tools" @click="emit('showTools')">Scheiben &amp; Aufwärmen</button>
 
@@ -294,5 +332,19 @@ function finishNote() {
 .set:not(.invalid) input.filled { background: color-mix(in srgb, var(--done) 18%, var(--bg)); border-color: var(--done); }
 .check { flex-direction: row; align-items: center; gap: 10px; min-height: 44px; color: var(--text); }
 .check input { width: 24px; height: 24px; min-height: 0; }
+.letter { display: inline-block; min-width: 1.4em; margin-right: 6px; color: var(--today); font-weight: 700; }
+.order .link-toggle { font-size: 1.1rem; filter: grayscale(1); opacity: 0.6; }
+.order .link-toggle.on { filter: none; opacity: 1; border-color: var(--today); background: color-mix(in srgb, var(--today) 18%, var(--bg)); }
+.set input.next { border: 2px solid var(--accent); }
+.drops { display: flex; flex-direction: column; gap: 6px; margin-left: 14px; padding-left: 10px; border-left: 2px solid var(--muted); }
+.drop { display: flex; align-items: center; gap: 6px; }
+.drop > .muted { flex-shrink: 0; }
+label.drop-kg, label.drop-reps { flex-direction: row; align-items: center; gap: 4px; color: var(--text); font-size: 1rem; }
+.drop-kg input { width: 64px; text-align: center; padding: 0 4px; }
+.drop-reps input { width: 52px; text-align: center; padding: 0 4px; font-weight: 600; }
+.drop:not(.invalid) .drop-reps input.filled { background: color-mix(in srgb, var(--done) 18%, var(--bg)); border-color: var(--done); }
+.drop.invalid .drop-reps input, .drop.invalid-kg .drop-kg input { border-color: var(--error); border-width: 2px; }
+.remove-drop { flex: 0 0 40px; width: 40px; padding: 0; margin-left: auto; }
+.add-drop { align-self: flex-start; }
 .test-hint { margin: 0; padding: 10px 12px; border-radius: 10px; background: color-mix(in srgb, var(--today) 14%, transparent); }
 </style>

@@ -87,7 +87,7 @@ function create() {
   buildBodySheet_(ss);
   const ctx = loadContext_(ss);
   buildDaySheet_(ss, ss.getSheetByName(EXAMPLE_DAY), EXAMPLE_SLOTS.map(function (slot) {
-    return { id: slot.id, name: ctx.exercises[slot.id].name, sets: slot.sets };
+    return { id: slot.id, name: ctx.exercises[slot.id].name, sets: slot.sets, superset: false };
   }), [1], ctx);
   ss.setActiveSheet(ss.getSheetByName(SHEET.help));
 }
@@ -99,7 +99,7 @@ function buildLogSheet_(ss) {
   styleHeaderRow_(sheet, LOG_HEADER.length);
   sheet.getRange('A2:A').setNumberFormat('dd.MM.yyyy');
   sheet.getRange('K2:K').setNumberFormat('dd.MM.yyyy HH:mm');
-  [90, 60, 80, 260, 130, 45, 60, 45, 75, 65, 130, 200, 75, 160].forEach(function (w, i) { sheet.setColumnWidth(i + 1, w); });
+  [90, 60, 80, 260, 130, 45, 60, 45, 75, 65, 130, 200, 75, 160, 50].forEach(function (w, i) { sheet.setColumnWidth(i + 1, w); });
 }
 
 // ===== Sheet builders =========================================================
@@ -154,13 +154,14 @@ function buildHelpSheet_(ss) {
     ['BLÄTTER'],
     ['Trainingstage: jedes Blatt mit „Trainingstag“ in A1 ist ein Trainingstag, der Reitername ist der Name in der App.'],
     ['  Darin: Wochentag und optional ein 2. Wochentag, darunter die Übungen mit ihrer Satzzahl (1–5).'],
+    ['  Supersatz: Haken bei einer Übung = sie bildet mit der nächsten Übung einen Supersatz.'],
     ['  Umbenennen: Reiter umbenennen (das Log zieht beim nächsten Öffnen der App nach). Neuer Tag: Tagesblatt duplizieren und umbenennen.'],
-    ['  Reihenfolge in der App = Reihenfolge der Reiter. Löschen: Reiter löschen (das Log bleibt).'],
+    ['  Reihenfolge in der App: nach Wochentag, Montag zuerst; Tage ohne Wochentag am Ende. Löschen: Reiter löschen (das Log bleibt).'],
     ['Übungen: Übungsstamm. Neue Übung = neue Zeile mit neuer ID. Nie löschen, nur Aktiv = nein.'],
     ['Gewichtssprung: Schritt für die +/−-Knöpfe in der App. Stangengewicht: aktiviert den Scheibenrechner (0 = ohne Stange).'],
     ['Muskelgruppen: jede Gruppe genau einmal, mit Ziel-Sätzen pro Woche. Im Blatt Übungen wird die Gruppe per Auswahl gewählt.'],
     ['  Umbenennen hier: die Übungen ziehen automatisch nach. Neue Gruppe: neue Zeile (Spalte ID bleibt leer).'],
-    ['Log: alle gespeicherten Sätze. Korrekturen direkt hier. Spalte 1RM-Test: 1 = echter Maximalversuch. Spalte Eingeschränkt: Grund oder „ja“.'],
+    ['Log: alle gespeicherten Sätze. Korrekturen direkt hier. Spalte 1RM-Test: 1 = echter Maximalversuch. Spalte Eingeschränkt: Grund oder „ja“. Spalte Drop: 1, 2, 3 = Drop-Satz nach dem letzten Satz.'],
     ['Einstellungen: Deload-Abstand, Gewichtsziel und „Gewicht pro Satz“ (ja = jeder Satz hat ein eigenes Gewicht).'],
     ['Körper: Gewicht morgens nüchtern, Bauchumfang wöchentlich.'],
     ['Trainings werden nur über die App gespeichert. Übungsnamen nur im Blatt Übungen ändern, die Tagesblätter übernehmen sie automatisch.'],
@@ -172,7 +173,7 @@ function buildHelpSheet_(ss) {
   sheet.getRange(1, 1, lines.length, 1).setValues(lines);
   sheet.setColumnWidth(1, 900);
   sheet.getRange('A1').setFontSize(14).setFontWeight('bold');
-  [7, 21].forEach(function (row) { sheet.getRange(row, 1).setFontWeight('bold'); });
+  [7, 22].forEach(function (row) { sheet.getRange(row, 1).setFontWeight('bold'); });
   sheet.setHiddenGridlines(true);
 }
 

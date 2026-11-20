@@ -19,10 +19,12 @@ const SHEET = { exercises: 'Übungen', log: 'Log', body: 'Körper', help: 'Hilfe
 // day sheet (since 1.8.0)
 const DAY_MARKER = 'Trainingstag';                 // A1 of every day sheet
 const DAY_ROW = { weekday: 2, weekday2: 3, header: 5, firstSlot: 6 };
-const DAY_COL = { name: 1, sets: 2, id: 3 };         // slot rows: exercise, sets, hidden ID
+const DAY_COL = { name: 1, sets: 2, superset: 3, id: 4 };   // slot rows: exercise, sets, superset with the next one (since 1.10.0), hidden ID
+const DAY_HEADER = ['Übung', 'Sätze', 'Supersatz', 'ID'];
 const SLOT_COUNT = 15;
 const WEEKDAYS = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];   // ISO order, Monday = 1
 const SET_LIMITS = { min: 1, max: 5, default: 4 };
+const MAX_DROPS = 3;                                    // drop sets after the last set (since 1.10.0)
 const NO_EXERCISE = '– keine –';   // dropdown entry that empties a slot
 
 // day sheet before 1.8.0 (sheet input): only read once to convert it
@@ -31,12 +33,13 @@ const OLD_DAY = { header: ['kg', 'S1', 'S2', 'S3', 'S4', '✗'], headerRow: 4, f
 // column index (0-based) in sheet "Übungen" and "Log"
 const EX = { id: 0, name: 1, muscleGroup: 2, type: 3, repsMin: 4, repsMax: 5, increment: 6, weightType: 7, active: 8 };
 const LOG = { date: 0, day: 1, exerciseId: 2, exercise: 3, muscleGroup: 4, set: 5, kg: 6, reps: 7, failure: 8, deload: 9, savedAt: 10,
-  note: 11, test: 12, limited: 13 };
+  note: 11, test: 12, limited: 13, drop: 14 };
 const EX_HEADER = ['ID', 'Übung', 'Muskelgruppe', 'Typ', 'Wdh-Min', 'Wdh-Max', 'Gewichtssprung (kg)', 'Gewichtsart', 'Aktiv'];
 // 1RM-Test (since 1.7.0): 1 = a real one-rep max attempt, kept out of all progression
 // Eingeschränkt (since 1.8.0): reason or "ja" = done with pain or stopped early, kept out of the progression
+// Drop (since 1.10.0): 1, 2, 3 = drop set after the last set ("Satz" = number of that set); empty = normal set
 const LOG_HEADER = ['Datum', 'Tag', 'Übungs-ID', 'Übung', 'Muskelgruppe', 'Satz', 'kg', 'Wdh', 'Versagen', 'Deload', 'Gespeichert am', 'Notiz',
-  '1RM-Test', 'Eingeschränkt'];
+  '1RM-Test', 'Eingeschränkt', 'Drop'];
 // sheet "Muskelgruppen" (since 1.7.0): name, weekly set target, hidden ID
 const MG = { name: 0, setsMin: 1, setsMax: 2, id: 3 };
 const MG_HEADER = ['Muskelgruppe', 'Sätze/Woche Min', 'Sätze/Woche Max', 'ID'];
@@ -163,9 +166,9 @@ function onEdit(e) {
     }
     return;
   }
-  if (!isDaySheet_(sheet)) return;
+  if (!isDaySheet_(sheet) || !hasSupersetColumn_(sheet)) return;   // old layout: setupApi converts it first
   const lastSlotRow = DAY_ROW.firstSlot + SLOT_COUNT - 1;
-  if (range.getLastRow() < DAY_ROW.firstSlot || range.getRow() > lastSlotRow || range.getColumn() > DAY_COL.sets) return;
+  if (range.getLastRow() < DAY_ROW.firstSlot || range.getRow() > lastSlotRow || range.getColumn() > DAY_COL.superset) return;
   // exercise chosen, removed or moved by hand: take the IDs from the names, compact the list
   const ctx = loadContext_(ss);
   const values = sheet.getRange(DAY_ROW.firstSlot, 1, SLOT_COUNT, DAY_COL.id).getValues();
@@ -198,20 +201,30 @@ function readWeekdays_(sheet) {
 }
 
 /**
- * Used slots in sheet order: { id, name, sets }. The ID in column C counts; a slot without
+ * Used slots in sheet order: { id, name, sets, superset }. The hidden ID counts; a slot without
  * ID (typed by hand) is matched by its name. Empty slots and unknown names are skipped.
+ * superset (since 1.10.0): this exercise and the next one form a superset; never true on the last slot.
+ * Reads sheets from before 1.10.0 (ID in column C, no superset column) too, until setupApi converts them.
  */
 function readDaySlots_(sheet, ctx) {
-  const values = sheet.getRange(DAY_ROW.firstSlot, 1, SLOT_COUNT, DAY_COL.id).getValues();
+  const current = hasSupersetColumn_(sheet);
+  const idColumn = current ? DAY_COL.id : 3;
+  const values = sheet.getRange(DAY_ROW.firstSlot, 1, SLOT_COUNT, idColumn).getValues();
   const used = [];
   values.forEach(function (row) {
     const name = String(row[DAY_COL.name - 1] || '');
-    let id = String(row[DAY_COL.id - 1] || '');
+    let id = String(row[idColumn - 1] || '');
     if (!id && name && name !== NO_EXERCISE) id = ctx.idByName[name] || '';
     if (!id) return;
-    used.push({ id: id, name: name, sets: setCount_(row[DAY_COL.sets - 1]) });
+    used.push({ id: id, name: name, sets: setCount_(row[DAY_COL.sets - 1]), superset: current && row[DAY_COL.superset - 1] === true });
   });
+  if (used.length) used[used.length - 1].superset = false;
   return used;
+}
+
+/** true if the day sheet has the superset column (layout since 1.10.0). */
+function hasSupersetColumn_(sheet) {
+  return sheet.getMaxColumns() >= DAY_COL.id && String(sheet.getRange(DAY_ROW.header, DAY_COL.superset).getValue()) === DAY_HEADER[2];
 }
 
 /** Writes the slots from the top and clears the rest; the shown name always comes from "Übungen" via the ID. */
@@ -220,7 +233,14 @@ function writeDaySlots_(sheet, used, ctx) {
   for (let i = 0; i < SLOT_COUNT; i++) {
     const slot = used[i];
     const exercise = slot && ctx.exercises[slot.id];
-    rows.push(slot ? [exercise ? exercise.name : slot.name || slot.id, slot.sets, slot.id] : ['', '', '']);
+    const shown = exercise ? exercise.name : slot && (slot.name || slot.id);
+    rows.push(slot ? [shown, slot.sets, i < used.length - 1 && slot.superset === true, slot.id] : ['', '', false, '']);
+  }
+  if (!hasSupersetColumn_(sheet)) {                       // layout before 1.10.0 (until setupApi): exercise, sets, ID
+    const oldRange = sheet.getRange(DAY_ROW.firstSlot, 1, SLOT_COUNT, 3);
+    const oldRows = rows.map(function (r) { return [r[0], r[1], r[3]]; });
+    if (JSON.stringify(oldRange.getValues()) !== JSON.stringify(oldRows)) oldRange.setValues(oldRows);
+    return;
   }
   const range = sheet.getRange(DAY_ROW.firstSlot, 1, SLOT_COUNT, DAY_COL.id);
   if (JSON.stringify(range.getValues()) !== JSON.stringify(rows)) range.setValues(rows);
@@ -236,7 +256,7 @@ function readOldDaySlots_(sheet, ctx) {
     const name = String(row[0] || '');
     let id = columns >= OLD_DAY.idCol ? String(row[OLD_DAY.idCol - 1] || '') : '';
     if (!id && name && name !== NO_EXERCISE) id = ctx.idByName[name] || '';
-    if (id) used.push({ id: id, name: name, sets: SET_LIMITS.default });
+    if (id) used.push({ id: id, name: name, sets: SET_LIMITS.default, superset: false });
   }
   return used;
 }
@@ -257,6 +277,7 @@ function buildDaySheet_(ss, sheet, slots, weekdays, ctx) {
   sheet.showColumns(1, maxColumns);
   sheet.setRowHeights(1, maxRows, 24);
   if (maxColumns > DAY_COL.id) sheet.deleteColumns(DAY_COL.id + 1, maxColumns - DAY_COL.id);
+  if (maxColumns < DAY_COL.id) sheet.insertColumnsAfter(maxColumns, DAY_COL.id - maxColumns);   // 1.8/1.9 sheets had 3 columns
   sheet.setHiddenGridlines(false);
 
   sheet.getRange(1, 1, 1, 2).setValues([[DAY_MARKER, 'Name des Trainings = Name des Reiters']]);
@@ -269,7 +290,7 @@ function buildDaySheet_(ss, sheet, slots, weekdays, ctx) {
   const weekdayRule = SpreadsheetApp.newDataValidation().requireValueInList(WEEKDAYS, true).setAllowInvalid(false).build();
   sheet.getRange(DAY_ROW.weekday, 2, 2, 1).setDataValidation(weekdayRule).setBackground('#fff8e1');
 
-  sheet.getRange(DAY_ROW.header, 1, 1, DAY_COL.id).setValues([['Übung', 'Sätze', 'ID']])
+  sheet.getRange(DAY_ROW.header, 1, 1, DAY_COL.id).setValues([DAY_HEADER])
     .setFontWeight('bold').setFontColor('#ffffff').setBackground('#263238');
   const exerciseRule = SpreadsheetApp.newDataValidation()
     .requireValueInRange(ss.getSheetByName(SHEET.lists).getRange('A2:A500'), true).setAllowInvalid(true).build();
@@ -279,16 +300,20 @@ function buildDaySheet_(ss, sheet, slots, weekdays, ctx) {
   sheet.getRange(DAY_ROW.firstSlot, DAY_COL.name, SLOT_COUNT, 1).setDataValidation(exerciseRule).setBackground('#fff8e1');
   sheet.getRange(DAY_ROW.firstSlot, DAY_COL.sets, SLOT_COUNT, 1).setDataValidation(setRule).setBackground('#fff8e1')
     .setHorizontalAlignment('center');
+  sheet.getRange(DAY_ROW.firstSlot, DAY_COL.superset, SLOT_COUNT, 1).insertCheckboxes().setHorizontalAlignment('center');
+  sheet.getRange(DAY_ROW.header, DAY_COL.superset).setNote('Haken = diese Übung und die nächste bilden einen Supersatz.');
   sheet.setColumnWidth(DAY_COL.name, 340);
   sheet.setColumnWidth(DAY_COL.sets, 170);
+  sheet.setColumnWidth(DAY_COL.superset, 110);
   sheet.hideColumns(DAY_COL.id);
   sheet.setFrozenRows(DAY_ROW.header);
   writeDaySlots_(sheet, slots, ctx);
 }
 
 /**
- * Brings every day sheet to the 1.8.0 layout (setupApi): sheets from before 1.8.0 keep their
- * exercises and order (4 sets each); a sheet with only "Trainingstag" in A1 gets the full layout.
+ * Brings every day sheet to the current layout (setupApi): sheets from before 1.8.0 keep their
+ * exercises and order (4 sets each); sheets from 1.8/1.9 keep weekdays, exercises and sets and get the
+ * superset column (1.10.0); a sheet with only "Trainingstag" in A1 gets the full layout.
  * Returns the names of the converted sheets. The log is never touched.
  */
 function upgradeDaySheets_(ss) {
@@ -300,7 +325,7 @@ function upgradeDaySheets_(ss) {
     if (isOldDaySheet_(sheet)) {
       buildDaySheet_(ss, sheet, readOldDaySlots_(sheet, ctx), [], ctx);
       converted.push(sheet.getName());
-    } else if (isDaySheet_(sheet) && String(sheet.getRange(DAY_ROW.header, 1).getValue()) !== 'Übung') {
+    } else if (isDaySheet_(sheet) && (String(sheet.getRange(DAY_ROW.header, 1).getValue()) !== 'Übung' || !hasSupersetColumn_(sheet))) {
       buildDaySheet_(ss, sheet, readDaySlots_(sheet, ctx), readWeekdays_(sheet), ctx);
       converted.push(sheet.getName());
     }
@@ -364,17 +389,22 @@ function isLimitedRow_(r) {
   return value === true || (typeof value === 'string' && value.trim() !== '');
 }
 
+/** true for a drop set row (since 1.10.0): only weight volume, never progression, records or set counts. */
+function isDropRow_(r) {
+  return Number(r[LOG.drop]) > 0;
+}
+
 /** Reason of a limited row, '' if none was given. */
 function limitedReason_(r) {
   const value = String(r[LOG.limited] === true ? '' : r[LOG.limited] || '').trim();
   return value === VALUE.yes ? '' : value;
 }
 
-/** Adds the headers "1RM-Test" and "Eingeschränkt" to the log if missing; never touches logged rows. */
+/** Adds the headers "1RM-Test", "Eingeschränkt" and "Drop" to the log if missing; never touches logged rows. */
 function ensureLogColumns_(ss) {
   const log = ss.getSheetByName(SHEET.log);
   if (log.getMaxColumns() < LOG_HEADER.length) log.insertColumnsAfter(log.getMaxColumns(), LOG_HEADER.length - log.getMaxColumns());
-  [LOG.test, LOG.limited].forEach(function (index) {
+  [LOG.test, LOG.limited, LOG.drop].forEach(function (index) {
     const header = String(log.getRange(1, index + 1).getValue() || '');
     if (header === LOG_HEADER[index]) return;
     if (header !== '') {

@@ -127,3 +127,33 @@ describe('1.8: Eingeschränkt and weight per set', () => {
     expect(sessionText(s.sessions[0])).toBe('80/75 kg × 10/8');
   });
 });
+
+describe('drop sets (API 1.10.0)', () => {
+  const drop = (date: string, kg: number, reps: number, n: number): LogRow =>
+    [date, 'Push', 'E06', 3, kg, reps, false, false, false, null, n];
+  const log: LogRow[] = [
+    ...session('2026-11-02', 'E06', 80, [8, 8, 7]),
+    ...session('2026-11-09', 'E06', 80, [10, 9, 8]), drop('2026-11-09', 60, 8, 1), drop('2026-11-09', 45, 8, 2),
+  ];
+  const s = exerciseStats(bench, log, []);
+  const last = s.sessions[1];
+  it('drops stay out of the sets and the e1RM, but count for the volume', () => {
+    expect(last.reps).toEqual([10, 9, 8]);
+    expect(last.drops).toEqual([{ kg: 60, reps: 8 }, { kg: 45, reps: 8 }]);
+    expect(last.volume).toBe(80 * 27 + 60 * 8 + 45 * 8);
+    expect(last.e1rm).toBeCloseTo(80 * (1 + 10 / 30));
+  });
+  it('the progression sees only the normal sets', () => {
+    expect(s.history.lastSession?.sets.map((x) => x.reps)).toEqual([10, 9, 8]);
+    expect(nextTraining(s).kg).toBe('82,5 kg (neu)');
+  });
+  it('the session text names the drops', async () => {
+    const { sessionText } = await import('./analysis');
+    expect(sessionText(last)).toBe('80 kg × 10/9/8 + Drop 60 kg × 8, 45 kg × 8');
+  });
+  it('drops do not count as sets of the week', () => {
+    const data = { apiVersion: '1.10.0', days: [], exercises: [bench], muscleGroups: [{ name: 'Brust', setsMin: 10, setsMax: 16 }],
+      log, body: [], settings: { deloadWeeks: 8, weightTarget: -0.5 } } as AnalysisData;
+    expect(weeklySets(data, ['2026-11-02', '2026-11-09']).get('Brust')!.map((w) => w.sets)).toEqual([3, 3]);
+  });
+});

@@ -29,7 +29,7 @@ Jeder Trainingstag ist ein eigenes Tabellenblatt. Wie der Reiter unten heißt, s
 3. Für jeden weiteren Tag: Rechtsklick auf einen Tages-Reiter → **Duplizieren**, dann die Kopie umbenennen und den Wochentag anpassen.
 4. Die App sortiert die Tage nach Wochentag, Montag zuerst. Tage ohne Wochentag landen am Ende, in der Reihenfolge der Reiter.
 
-Die Übungen für jeden Tag wählst du ab Zeile 6 aus der Liste aus, oder später bequem in der App. Daneben steht, wie viele Sätze du machst (1 bis 5, Standard 4).
+Die Übungen für jeden Tag wählst du ab Zeile 6 aus der Liste aus, oder später bequem in der App. Daneben steht, wie viele Sätze du machst (1 bis 5, Standard 4). Ein Haken in der Spalte **Supersatz** verbindet die Übung mit der nächsten.
 
 ## 3. Einrichtung ausführen
 
@@ -105,6 +105,8 @@ Wichtig: Den Link in den Einstellungen der App einfügen, nicht in Safari öffne
 - **Knöpfe:** Hinter dem Namen stehen die Wochentage aus dem Sheet, z. B. „Push (Mo, Do)“. Der Tag für heute ist eingerahmt.
 - **Ziel heute** sagt dir, welches Gewicht und wie viele Wiederholungen dran sind. Das Gewicht ist schon eingetragen, die grauen Zahlen in den Satzfeldern sind das Ziel.
 - **Satz eintragen:** Feld antippen und die Zahl eingeben, oder **+ / −** benutzen. Eingetragene Sätze werden grün. Ein leeres Feld heißt: Satz nicht gemacht.
+- **Supersatz:** 🔗 bei einer Übung antippen, dann bildet sie mit der nächsten einen Supersatz. Beide stehen in einem Rahmen, und der nächste Satz ist markiert: A1 → B1 → A2 → B2. Noch mal 🔗 löst die Verbindung.
+- **Drop-Satz:** Unter den Sätzen auf **+ Drop** tippen. Das Gewicht ist 20 % leichter vorbelegt, du trägst die Wiederholungen ein. Bis zu 3 Drops, ✕ entfernt einen. Drops zählen beim Volumen, aber nicht für Ziel, Rekorde und Progression.
 - **Gerätenotiz** (z. B. „Sitz 4“): antippen und eintragen. Sie gilt für alle Trainingstage.
 - **Scheiben & Aufwärmen** zeigt dir bei Langhantel-Übungen, welche Scheiben auf jede Seite kommen, und schlägt Aufwärmsätze vor.
 - **1RM-Test (Maximalversuch):** Haken setzen und Gewicht eintragen. Der Versuch zählt mit 1 Wdh als getestetes 1RM und hat keinen Einfluss auf Ziel, Rekorde und Progression.
@@ -115,7 +117,7 @@ Wichtig: Den Link in den Einstellungen der App einfügen, nicht in Safari öffne
 
 ## Das Sheet
 
-- **Tagesblätter:** ein Blatt pro Trainingstag, der Reitername ist der Tagesname. In A1 steht `Trainingstag`, das macht das Blatt zum Tagesblatt. In B2 und B3 stehen die Wochentage, ab Zeile 6 Übung und Sätze (1 bis 5). Trainings speicherst du nur über die App.
+- **Tagesblätter:** ein Blatt pro Trainingstag, der Reitername ist der Tagesname. In A1 steht `Trainingstag`, das macht das Blatt zum Tagesblatt. In B2 und B3 stehen die Wochentage, ab Zeile 6 Übung, Sätze (1 bis 5) und der Haken für den Supersatz. Trainings speicherst du nur über die App.
   - **Umbenennen:** einfach nur den Reiter umbenennen. Beim nächsten Öffnen der App steht der neue Name überall, auch bei allen alten Einträgen im Log.
   - **Neuer Tag:** Tagesblatt duplizieren und umbenennen. Oder ein leeres Blatt anlegen, in A1 `Trainingstag` schreiben und setupApi ausführen. **Tag entfernen:** Reiter löschen, die alten Einträge im Log bleiben erhalten.
   - Änderungen am Sheet sieht die App beim nächsten Öffnen. Läuft sie noch im Hintergrund, in der App-Übersicht nach oben wischen und neu öffnen.
@@ -125,7 +127,7 @@ Wichtig: Den Link in den Einstellungen der App einfügen, nicht in Safari öffne
   - **Stangengewicht kg:** schaltet den Scheibenrechner ein, z. B. 20 bei der Langhantel, 0 bei der Multipresse (nur Scheiben). Leer = kein Scheibenrechner.
 - **Muskelgruppen:** jede Gruppe genau einmal, mit **Sätze/Woche Min** und **Max** als Ziel für die Seite Volumen. Im Blatt Übungen wählst du die Gruppe dann aus einer Liste.
   - **Umbenennen:** nur hier. Die Übungen ziehen automatisch nach. **Neue Gruppe:** neue Zeile, die (ausgeblendete) Spalte ID bleibt leer.
-- **Log:** alle gespeicherten Sätze. Korrigieren kannst du direkt hier. Spalte **1RM-Test**: 1 = echter Maximalversuch. Spalte **Eingeschränkt**: Grund oder „ja“, leer = normal.
+- **Log:** alle gespeicherten Sätze. Korrigieren kannst du direkt hier. Spalte **1RM-Test**: 1 = echter Maximalversuch. Spalte **Eingeschränkt**: Grund oder „ja“, leer = normal. Spalte **Drop**: 1, 2, 3 = Drop-Satz nach dem letzten Satz.
 - **Einstellungen:** u. a. **Gewicht pro Satz** (ja/nein). Mit „ja“ hat jeder Satz in der App ein eigenes Gewichtsfeld, und das Ziel gilt pro Satz. Alle Werte kannst du auch in der App unter *Einstellungen → Globale Einstellungen* ändern.
 - **Körper:** Gewicht und Bauchumfang trägst du in der App unter **Körper** ein, oder direkt hier im Sheet.
 
