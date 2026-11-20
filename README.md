@@ -1,22 +1,26 @@
 # Trainings-Tracker
 
-Web-App zum Erfassen von Krafttraining am Handy. Jeder Nutzer speichert seine Daten im **eigenen Google Sheet**; die App ist nur die Oberfläche. Die Auswertung läuft in Excel.
+Mit diesem Tracker erfasse ich mein Krafttraining am Handy. Die Daten liegen in einem ganz normalen Google Sheet, damit ich jederzeit selbst etwas ändern kann. Die App ist nur die Oberfläche dafür. Für die Auswertung am PC gibt es eine eigene Seite.
 
-**Neu hier?** → [Einrichtungsanleitung](template/ANLEITUNG.md)
+Ein paar Freunde nutzen den Tracker auch. Jeder hat sein eigenes Sheet, ich sehe von ihren Daten nichts.
+
+**Neu hier?** Dann fang mit der [Einrichtungsanleitung](template/ANLEITUNG.md) an.
 
 | Ordner | Inhalt |
 | --- | --- |
-| `app/` | Web-App (Vue 3, TypeScript, Vite), veröffentlicht über GitHub Pages |
+| `app/` | Web-App (Vue 3, TypeScript, Vite) inklusive PC-Auswertung, läuft über GitHub Pages |
 | `api/` | Script für das Google Sheet: Sheet-Aufbau und Web-API |
-| `template/` | Anleitungen und Excel-Auswertung |
+| `template/` | Anleitungen und die alten Auswertungen (Excel, Google Sheets) |
 
 ## Aufbau
 
-- **App** (`app/src`): `App.vue` schaltet zwischen Start, Training, Verlauf, Körper und Einstellungen. Die Rechenlogik (Ziel heute, Rekord, Scheibenrechner, Aufwärmsätze) steht in `training.ts`, der Deload-Check in `deload.ts`, die Gewichtsauswertung in `body.ts`, das laufende Training und die Speicherdaten in `draft.ts`, die Aufrufe des Web-API in `api.ts`. Tests liegen jeweils daneben (`*.test.ts`).
-- **Web-API ab 1.6.0**: zusätzlich `getTraining` (Verlauf, nur lesend) und `saveBody` (Blatt Körper). **Das Log wird nur ergänzt:** Keine Aktion ändert oder löscht gespeicherte Trainings; Korrekturen nur von Hand im Sheet (ab 1.6.1). Das Blatt **Einstellungen** im Sheet enthält Deload-Intervall und Gewichtsziel pro Woche; `setupApi` ergänzt fehlende Zeilen.
-- **Script** (`api/`): `Save.gs` ist der Sheet-Aufbau zur Laufzeit (Tagesblätter mit Wochentagen und Satzzahl, Muskelgruppen, Log-Zugriff), `Setup.gs` baut die Vorlage, `Api.gs` ist das Web-API für die App (Version in `API_VERSION`).
+- **App** (`app/src`): `App.vue` schaltet zwischen Start, Training, Verlauf, Körper und Einstellungen um. Die Rechenlogik (Ziel heute, Rekord, Scheibenrechner, Aufwärmsätze) steckt in `training.ts`, der Deload-Check in `deload.ts`, die Gewichtsauswertung in `body.ts`. Das laufende Training und die Speicherdaten liegen in `draft.ts`, die Aufrufe des Web-API in `api.ts`. Die Tests stehen jeweils daneben (`*.test.ts`).
+- **PC-Auswertung** (`app/src/analysis`): eigene Seite unter `/auswertung/`. Sie liest nur und ändert nichts im Sheet.
+- **Script** (`api/`): `Save.gs` baut das Sheet zur Laufzeit auf (Tagesblätter mit Wochentagen und Satzzahl, Muskelgruppen, Zugriff aufs Log). `Setup.gs` erzeugt die Vorlage, `Api.gs` ist das Web-API für die App. Die Version steht in `API_VERSION`.
+- **Das Log wird nur ergänzt.** Keine Aktion ändert oder löscht ein gespeichertes Training. Korrekturen mache ich von Hand im Sheet.
+- Das Blatt **Einstellungen** im Sheet enthält unter anderem das Deload-Intervall, das Gewichtsziel pro Woche und „Gewicht pro Satz“. `setupApi` ergänzt fehlende Zeilen. Seit 1.9.0 lassen sich die Werte auch in der App ändern.
 - Die App rechnet, das Web-API liest und schreibt nur.
-- Jede Angabe steht an genau einer Stelle: Ein Trainingstag heißt so wie sein Reiter (das Log zieht Umbenennungen nach), eine Übung so wie im Blatt Übungen (Tagesblätter und Log verweisen über die ID).
+- Jede Angabe steht an genau einer Stelle. Ein Trainingstag heißt so wie sein Reiter, das Log zieht Umbenennungen nach. Eine Übung heißt so wie im Blatt Übungen, Tagesblätter und Log verweisen über die ID darauf.
 
 ## Entwicklung
 
@@ -30,13 +34,13 @@ npm run build   # Typprüfung und Build
 
 Jeder Push auf `main` baut die App und veröffentlicht sie automatisch (`.github/workflows/deploy.yml`).
 
-Getestet wird nie am echten Sheet, nur an einer Kopie oder an der Vorlage.
+Getestet wird nie an meinem echten Sheet, nur an einer Kopie oder an der Vorlage.
 
 ## Script-Änderungen
 
-1. `API_VERSION` in `api/Api.gs` erhöhen. Braucht die App die neue Version, `MIN_API_VERSION` in `app/src/api.ts` anheben; die App zeigt dann den Hinweis mit der Anleitung [UPDATE.md](template/UPDATE.md).
-2. Änderungen möglichst abwärtskompatibel halten, damit nicht jedes App-Update ein Script-Update erzwingt.
+1. `API_VERSION` in `api/Api.gs` erhöhen. Braucht die App die neue Version zwingend, auch `MIN_API_VERSION` in `app/src/api.ts` anheben. Die App zeigt dann einen Hinweis mit Link auf [UPDATE.md](template/UPDATE.md).
+2. Änderungen möglichst abwärtskompatibel halten, damit nicht jedes App-Update gleich ein Script-Update erzwingt.
 
 ## Sicherheit
 
-Dieses Repository ist öffentlich. Es enthält **keine** Schlüssel, Web-API-Adressen, CSV-Links oder persönlichen Daten. Diese stehen nur in den Einstellungen der App auf dem jeweiligen Handy, in den Script-Eigenschaften des eigenen Sheets bzw. im Blatt Einstellungen der eigenen Excel-Datei.
+Das Repository ist öffentlich. Hier stehen deshalb **keine** Schlüssel, Web-API-Adressen, CSV-Links oder persönlichen Daten. Die liegen nur in den Einstellungen der App auf dem jeweiligen Handy, in den Script-Eigenschaften des eigenen Sheets oder im Blatt Einstellungen der eigenen Excel-Datei.
