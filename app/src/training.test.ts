@@ -83,6 +83,25 @@ describe('targetToday – rules 1 to 4', () => {
   });
 });
 
+describe('targetToday – the best set counts, not only set 1', () => {
+  const row = exercise({ id: 'E14', type: 'Grundübung', repsMin: 8, repsMax: 12, increment: 2.5, weightType: 'pro Hand' });
+  it('a later set at the maximum raises the weight (25 kg × 10/10/12)', () => {
+    const t = targetToday(row, history(25, [10, 10, 12]), false);
+    expect(t.kind).toBe('up');
+    expect(t.kg).toBe(27.5);
+  });
+  it('a set below the minimum still blocks the raise', () => {
+    expect(targetToday(row, history(25, [12, 10, 7]), false).kind).toBe('same');
+  });
+  it('the goal is the best set + 1', () => {
+    expect(targetToday(row, history(25, [9, 10, 8]), false).reps).toBe(11);
+  });
+  it('lowered only when even the best set is more than 2 reps below the minimum', () => {
+    expect(targetToday(row, history(25, [5, 7, 5]), false).kind).toBe('same');
+    expect(targetToday(row, history(25, [5, 5, 4]), false).kind).toBe('down');
+  });
+});
+
 describe('targetToday – special cases', () => {
   it('added weight 0 kg never decreases', () => {
     expect(targetToday(pullUp, history(0, [3, 3, 2]), false).text).toBe('= 0 kg · 4+');

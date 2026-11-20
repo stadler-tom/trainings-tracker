@@ -34,7 +34,7 @@ function rowOf(s: ExerciseStats): Row {
   const inc = s.exercise.increment;
   const nextText = setCount || s.status === 'jump' || !last || inc <= 0 || next.kg.includes('(')
     ? next.kg
-    : `${next.kg} · ab ${s.exercise.repsMax} Wdh in Satz 1 → ${formatNumber(last.kg + inc)} kg`;
+    : `${next.kg} · ab ${s.exercise.repsMax} Wdh in einem Satz → ${formatNumber(last.kg + inc)} kg`;
   return {
     id: s.exercise.id, name: s.exercise.name, days: daysOf(s.exercise.id).join(', ') || '–',
     lastDate: last ? formatIsoDate(last.date).slice(0, 6) : '–',

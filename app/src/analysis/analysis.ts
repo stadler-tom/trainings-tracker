@@ -148,15 +148,15 @@ export function nextTraining(stats: ExerciseStats, setCount: number | null = nul
       return { kg: `${kgText(target.kg!)} (neu)`, hint: `Ziel erreicht – alle Sätze mit dem neuen Gewicht, ${exercise.repsMin}–${exercise.repsMax} Wdh.` };
     case 'down':
       return { kg: `${kgText(target.kg!)} (runter)`,
-        hint: `Satz 1 lag mehr als 2 Wdh unter ${exercise.repsMin}. Mit diesem Gewicht wieder ${exercise.repsMin}+ Wdh schaffen.` };
+        hint: `Der beste Satz lag mehr als 2 Wdh unter ${exercise.repsMin}. Mit diesem Gewicht wieder ${exercise.repsMin}+ Wdh schaffen.` };
     case 'warmUp':
       return { kg: kgText(target.kg!), hint: 'Aufwärmübung: kein Steigerungsziel.' };
     default:
       return {
         kg: kgText(target.kg!),
         hint: exercise.increment > 0
-          ? `Steigt auf ${kgText(target.kg! + exercise.increment)}, wenn Satz 1 ${exercise.repsMax} Wdh schafft und alle Sätze mind. ${exercise.repsMin}.`
-          : `Ziel: Satz 1 auf ${exercise.repsMax} Wdh.`,
+          ? `Steigt auf ${kgText(target.kg! + exercise.increment)}, wenn ein Satz ${exercise.repsMax} Wdh schafft und alle Sätze mind. ${exercise.repsMin}.`
+          : `Ziel: ein Satz mit ${exercise.repsMax} Wdh.`,
       };
   }
 }

@@ -38,7 +38,11 @@ function floorTo(value: number, step: number): number {
   return Math.floor(value / step + EPSILON) * step;
 }
 
-/** Target for today, derived from the last regular session (rules 1–4 plus special cases). */
+/**
+ * Target for today, derived from the last regular session (rules 1–4 plus special cases).
+ * The rules look at the best set (most reps), not only at set 1: a later set at the maximum
+ * proves the weight just as well (since app 1.9.1).
+ */
 export function targetToday(exercise: Exercise, history: ExerciseHistory | undefined, isDeload: boolean): Target {
   const { repsMin, repsMax, increment } = exercise;
   const last = history?.lastSession;
@@ -48,26 +52,26 @@ export function targetToday(exercise: Exercise, history: ExerciseHistory | undef
   const sets = [...last.sets].sort((a, b) => a.set - b.set);
   const kg = sets[0].kg;
   const reps = sets.map((s) => s.reps);
-  const firstSet = reps[0];
+  const bestSet = Math.max(...reps);
 
   if (isDeload) {
     const deloadSets = Math.ceil(sets.length / 2);
-    return { kind: 'deload', kg, reps: firstSet, sets: deloadSets, text: `Deload ${formatNumber(kg)} kg · ${deloadSets} Sätze` };
+    return { kind: 'deload', kg, reps: bestSet, sets: deloadSets, text: `Deload ${formatNumber(kg)} kg · ${deloadSets} Sätze` };
   }
   if (exercise.type === 'Aufwärmen') {
-    return { kind: 'warmUp', kg, reps: firstSet, sets: null, text: '' };
+    return { kind: 'warmUp', kg, reps: bestSet, sets: null, text: '' };
   }
-  if (firstSet >= repsMax && Math.min(...reps) >= repsMin) {                               // rule 2
+  if (bestSet >= repsMax && Math.min(...reps) >= repsMin) {                               // rule 2
     const next = kg + increment;
     return { kind: 'up', kg: next, reps: repsMin, sets: null, text: `↑ ${formatNumber(next)} kg · ${repsMin}+` };
   }
   const zeroAddedWeight = exercise.weightType === 'Zusatzgewicht' && kg === 0;
-  if (firstSet < repsMin - DECREASE_TOLERANCE && increment > 0 && !zeroAddedWeight) {     // rule 3
+  if (bestSet < repsMin - DECREASE_TOLERANCE && increment > 0 && !zeroAddedWeight) {     // rule 3
     const best = Math.max(...reps.map((r) => e1rm(kg, r)));
     const lower = Math.max(increment, floorTo(best / (1 + repsMin / 30), increment));
     return { kind: 'down', kg: lower, reps: repsMin, sets: null, text: `↓ ${formatNumber(lower)} kg · ${repsMin}+` };
   }
-  const goal = Math.min(firstSet + 1, repsMax);                                            // rule 4
+  const goal = Math.min(bestSet + 1, repsMax);                                            // rule 4
   return { kind: 'same', kg, reps: goal, sets: null, text: `= ${formatNumber(kg)} kg · ${goal}+` };
 }
 

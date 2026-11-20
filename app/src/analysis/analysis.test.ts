@@ -31,7 +31,7 @@ describe('exerciseStats', () => {
   });
   it('the last regular session drives the next training (deload ignored)', () => {
     expect(s.history.lastSession?.date).toBe('2026-10-22');
-    expect(nextTraining(s)).toEqual({ kg: '80 kg', hint: 'Steigt auf 82,5 kg, wenn Satz 1 10 Wdh schafft und alle Sätze mind. 6.' });
+    expect(nextTraining(s)).toEqual({ kg: '80 kg', hint: 'Steigt auf 82,5 kg, wenn ein Satz 10 Wdh schafft und alle Sätze mind. 6.' });
   });
   it('volume is kg × reps, like the app', () => {
     expect(s.sessions[0].volume).toBe(80 * 23);
