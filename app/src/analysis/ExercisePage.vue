@@ -111,16 +111,19 @@ const bars = computed(() => {
   }));
 });
 
-// hover box of the volume bars: the bar under the mouse, placed beside it (left of it near the right edge)
+// hover box of the volume bars: follows the mouse and may overlap the bars (left of the mouse near the right edge)
 const barsBox = ref<HTMLElement | null>(null);
 const hoveredBar = ref<{ index: number; style: Record<string, string> } | null>(null);
-function onBarEnter(index: number, event: MouseEvent) {
+function onBarMove(index: number, event: MouseEvent) {
   const box = barsBox.value!.getBoundingClientRect();
-  const bar = (event.currentTarget as HTMLElement).getBoundingClientRect();
-  const right = bar.right - box.left;
+  const x = event.clientX - box.left;
+  const y = event.clientY - box.top;
+  const top = `${Math.max(y - 14, 0)}px`;
   hoveredBar.value = {
     index,
-    style: right > box.width - 240 ? { right: `${box.right - bar.left + 8}px`, top: '8px' } : { left: `${right + 8}px`, top: '8px' },
+    style: x > box.width - 200
+      ? { right: `${box.width - x + 14}px`, top, transform: 'translateY(-100%)' }
+      : { left: `${x + 14}px`, top, transform: 'translateY(-100%)' },
   };
 }
 
@@ -212,7 +215,7 @@ const rows = computed(() => {
         <div v-if="bars" ref="barsBox" style="position: relative" @mouseleave="hoveredBar = null">
           <div role="img" aria-label="Säulenchart Volumen je Einheit"
             :style="{ height: '180px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: bars.length > 20 ? '2px' : '2%', borderBottom: '1px solid var(--a-line)' }">
-            <div v-for="(b, i) in bars" :key="i" class="a-bar-col" @mouseenter="onBarEnter(i, $event)"
+            <div v-for="(b, i) in bars" :key="i" class="a-bar-col" @mousemove="onBarMove(i, $event)"
               :style="{ flex: '1 1 0', maxWidth: '25%', height: b.height, background: b.last ? 'var(--a-chart)' : 'var(--a-neutral)', borderRadius: '3px 3px 0 0',
                 outline: hoveredBar?.index === i ? '2px solid var(--a-text)' : 'none', outlineOffset: '1px' }"></div>
           </div>
