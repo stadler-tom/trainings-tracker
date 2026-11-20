@@ -66,6 +66,46 @@ export function applyDarkMode(dark: boolean, remember = false): void {
   }
 }
 
+// Personal code image (e.g. a gym entry QR code), stored only on this device as a data URL.
+// The feature is hidden: its settings section appears only after unlocking it on the device.
+const CODE_IMAGE_KEY = 'tt.codeImage';
+const CODE_UNLOCKED_KEY = 'tt.codeUnlocked';
+
+export function loadCodeImage(): string | null {
+  try {
+    return localStorage.getItem(CODE_IMAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/** Stores the image; returns false if the device storage is full or unavailable. */
+export function saveCodeImage(dataUrl: string | null): boolean {
+  try {
+    if (dataUrl) localStorage.setItem(CODE_IMAGE_KEY, dataUrl);
+    else localStorage.removeItem(CODE_IMAGE_KEY);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function loadCodeUnlocked(): boolean {
+  try {
+    return localStorage.getItem(CODE_UNLOCKED_KEY) === '1' || localStorage.getItem(CODE_IMAGE_KEY) !== null;
+  } catch {
+    return false;
+  }
+}
+
+export function saveCodeUnlocked(): void {
+  try {
+    localStorage.setItem(CODE_UNLOCKED_KEY, '1');
+  } catch {
+    // ignore: stays unlocked for this session
+  }
+}
+
 // Last loaded state, shown at once on the next start while the fresh state loads in the
 // background. It is a copy of the sheet for display only and belongs to one web API URL.
 const STATE_KEY = 'tt.state';

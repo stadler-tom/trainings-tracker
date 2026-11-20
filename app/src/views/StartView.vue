@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { isOlderVersion, MIN_API_VERSION, UPDATE_GUIDE_URL, type State } from '../api';
 import { formatIsoDate, localDate } from '../format';
 import { deloadStatus } from '../deload';
 import { dayLabel, daysDoneToday, daysForToday, sortDaysByWeekday } from '../training';
+import { loadCodeImage } from '../storage';
 import LoadingSpinner from './LoadingSpinner.vue';
 
 const props = defineProps<{
@@ -31,10 +32,14 @@ const deload = computed(() => (props.state ? deloadStatus(props.state, props.tod
 // not every time the start screen is shown again with data already there.
 const animateDays = !props.state;
 const STAGGER_MS = 80;
+
+// personal code image from the settings (only on this device); without one there is no button
+const codeImage = loadCodeImage() ?? undefined;
+const showCode = ref(false);
 </script>
 
 <template>
-  <main class="screen">
+  <main class="screen start">
     <header class="bar">
       <h1>Training</h1>
       <button class="ghost" @click="emit('openSettings')">Einstellungen</button>
@@ -106,10 +111,48 @@ const STAGGER_MS = 80;
       </div>
       <p v-if="error" class="message error">{{ error }}</p>
     </template>
+
+    <footer v-if="codeImage" class="code-footer">
+      <button class="big" @click="showCode = true">🎫 Code anzeigen</button>
+    </footer>
+    <div v-if="showCode" class="code-overlay" role="dialog" aria-label="Code" @click="showCode = false">
+      <img :src="codeImage" alt="Code" />
+      <p>Tippen zum Schließen</p>
+    </div>
   </main>
 </template>
 
 <style scoped>
+.start { min-height: 100dvh; }
+.code-footer {
+  position: sticky;
+  bottom: 0;
+  margin-top: auto;
+  padding: 8px 0 calc(env(safe-area-inset-bottom) + 4px);
+  background: var(--bg);
+}
+.code-footer button { width: 100%; text-align: center; }
+/* always white: scanners need dark code on a light background, also in dark mode */
+.code-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: calc(env(safe-area-inset-top) + 16px) 16px calc(env(safe-area-inset-bottom) + 16px);
+  background: #fff;
+}
+.code-overlay img {
+  max-width: 100%;
+  max-height: calc(100% - 40px);
+  object-fit: contain;
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+.code-overlay p { margin: 0; color: #6b7280; font-size: 0.85rem; }
 .continue { text-align: center; font-size: 1.05rem; }
 
 .deload {

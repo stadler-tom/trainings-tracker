@@ -5,7 +5,10 @@ import {
   type GlobalSetting, type State,
 } from '../api';
 import { formatNumber } from '../training';
-import { applyDarkMode, DEFAULT_PLATES, loadDarkMode, parseSetupLink, type Settings } from '../storage';
+import {
+  applyDarkMode, DEFAULT_PLATES, loadCodeImage, loadCodeUnlocked, loadDarkMode, parseSetupLink, saveCodeImage,
+  saveCodeUnlocked, type Settings,
+} from '../storage';
 
 const props = defineProps<{ settings: Settings; apiVersion: string | null; state: State | null }>();
 const emit = defineEmits<{ save: [settings: Settings]; back: []; stateUpdated: [state: State] }>();
@@ -13,6 +16,57 @@ const emit = defineEmits<{ save: [settings: Settings]; back: []; stateUpdated: [
 // dark mode: per device, switches at once
 const dark = ref(loadDarkMode());
 watch(dark, (value) => applyDarkMode(value, true));
+
+// hidden personal code image: unlocked by tapping the version line five times
+const UNLOCK_TAPS = 5;
+const codeUnlocked = ref(loadCodeUnlocked());
+const codeImage = ref(loadCodeImage() ?? undefined);
+const codeMessage = ref('');
+const codeFailed = ref(false);
+let versionTaps = 0;
+function tapVersion() {
+  if (codeUnlocked.value || ++versionTaps < UNLOCK_TAPS) return;
+  codeUnlocked.value = true;
+  saveCodeUnlocked();
+}
+
+// keeps the image small enough for the device storage; QR codes stay sharp at this size
+const CODE_MAX_SIDE = 1000;
+const CODE_MAX_CHARS = 2_000_000;
+
+async function pickCodeImage(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = '';
+  if (!file) return;
+  codeFailed.value = false;
+  try {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, CODE_MAX_SIDE / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    const context = canvas.getContext('2d')!;
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    let dataUrl = canvas.toDataURL('image/png');
+    if (dataUrl.length > CODE_MAX_CHARS) dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+    if (!saveCodeImage(dataUrl)) throw new Error('storage');
+    codeImage.value = dataUrl;
+    codeMessage.value = 'Gespeichert. Der Knopf erscheint unten auf der Startseite.';
+  } catch {
+    codeFailed.value = true;
+    codeMessage.value = 'Das Bild konnte nicht gespeichert werden. Bitte ein anderes Bild versuchen.';
+  }
+}
+
+function removeCodeImage() {
+  saveCodeImage(null);
+  codeImage.value = undefined;
+  codeFailed.value = false;
+  codeMessage.value = 'Bild entfernt.';
+}
 
 // global settings: the rows of sheet "Einstellungen", the same on every device
 const globals = computed<GlobalSetting[]>(() => props.state?.settings ?? []);
@@ -166,6 +220,18 @@ async function testConnection() {
       <p class="muted small">Gilt nur auf diesem Gerät und sofort.</p>
     </section>
 
+    <section v-if="codeUnlocked" class="card">
+      <h2>Mein Code</h2>
+      <p class="muted small">Ein Bild, z. B. ein Screenshot deines QR-Codes. Es bleibt nur auf diesem Gerät.</p>
+      <img v-if="codeImage" :src="codeImage" alt="Hinterlegter Code" class="code-preview" />
+      <label class="file-button">
+        {{ codeImage ? 'Anderes Bild wählen' : 'Bild wählen' }}
+        <input type="file" accept="image/*" @change="pickCodeImage" />
+      </label>
+      <button v-if="codeImage" @click="removeCodeImage">Bild entfernen</button>
+      <p v-if="codeMessage" class="message" :class="{ error: codeFailed, success: !codeFailed }">{{ codeMessage }}</p>
+    </section>
+
     <button class="big primary" @click="emit('save', current())">Speichern</button>
 
     <section class="card">
@@ -197,7 +263,7 @@ async function testConnection() {
       <p v-else class="muted">Erst die Verbindung einrichten, dann erscheinen hier die Einstellungen aus dem Sheet.</p>
     </section>
 
-    <p class="muted small">
+    <p class="muted small" @click="tapVersion">
       App {{ appVersion }} · Web-API {{ apiVersion ?? 'unbekannt' }}
     </p>
     <p v-if="timingLines.length" class="muted small">
@@ -213,4 +279,16 @@ async function testConnection() {
 <style scoped>
 .global { display: flex; flex-direction: column; gap: 4px; padding: 8px 0; border-bottom: 1px solid var(--bg); }
 .global p { margin: 0; }
+.code-preview { max-width: 160px; align-self: center; border-radius: 8px; background: #fff; }
+.file-button {
+  min-height: 44px;
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 1rem;
+  align-items: center;
+  justify-content: center;
+}
+.file-button { position: relative; overflow: hidden; }
+.file-button input { position: absolute; inset: 0; opacity: 0; }
 </style>
