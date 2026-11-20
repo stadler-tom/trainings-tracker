@@ -5,7 +5,7 @@ Du hast bisher mit **Strong** trainiert und willst deinen Verlauf mitnehmen? Mit
 Dauer: etwa 30 Minuten, alles am PC.
 
 Du brauchst:
-- den **Kopier-Link der Vorlage**, den du von mir bekommst,
+- die **Vorlage**, den Link findest du in der [Anleitung](ANLEITUNG.md#1-vorlage-kopieren),
 - die Datei **Strong-Import.xlsx**, die ich dir aus deinem Strong-Export baue (siehe [Schritt 0](#0-strong-daten-exportieren)).
 
 ---

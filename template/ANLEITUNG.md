@@ -14,7 +14,7 @@ Die Schritte 1 bis 5 machst du am PC, Schritt 6 und 7 am iPhone.
 
 ## 1. Vorlage kopieren
 
-1. Öffne den Vorlage-Link, den ich dir geschickt habe.
+1. Öffne die Vorlage über diesen Link: <https://docs.google.com/spreadsheets/d/1F4nseZO28sjcrHXs4sTEblvaoVbs5NMU7jBt1EHN4GY/copy>
 2. Google fragt „Kopie erstellen?“. Klick auf **Kopie erstellen**.
 3. Die Kopie liegt jetzt in deinem Google Drive. Nenn sie, wie du willst, zum Beispiel „Mein Training“.
 

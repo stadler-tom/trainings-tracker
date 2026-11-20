@@ -81,6 +81,6 @@ Die Vorlage ist ein eigenes, neues Sheet ohne meine Daten.
 
 6. Oben rechts **Freigeben** → unter „Allgemeiner Zugriff“ **Jeder mit dem Link**, Rolle **Betrachter** → **Link kopieren**.
 7. Im kopierten Link alles ab `/edit` (einschließlich `?usp=sharing`) durch `/copy` ersetzen. Aus `https://docs.google.com/spreadsheets/d/ABC…/edit?usp=sharing` wird `https://docs.google.com/spreadsheets/d/ABC…/copy`.
-8. Diesen Kopier-Link und den Link zur [Anleitung](ANLEITUNG.md) an meine Freunde schicken. Mehr brauchen sie nicht.
+8. Den Kopier-Link in [ANLEITUNG.md](ANLEITUNG.md) bei Schritt 1 eintragen (aktuell steht dort meine Vorlage). Dann reicht es, meinen Freunden den Link zur Anleitung zu schicken.
 
 Über den Link sehen sie nur die leere Vorlage, nie mein echtes Sheet.
