@@ -21,6 +21,8 @@ const sets = computed(() => weekSets(props.data, today));
 const limited = computed(() => limitedTracking(props.stats, today));
 const limitedMax = computed(() => Math.max(1, ...limited.value.weeks.map((w) => w.count)));
 
+const MARKER = { good: '✓', bad: '!', neutral: 'i' } as const;
+const MARKER_LABEL = { good: 'positiv', bad: 'negativ', neutral: 'Information' } as const;
 const LIGHT_TEXT = { green: 'Grün', yellow: 'Gelb', red: 'Rot', none: 'Keine Bewertung' } as const;
 const TREND_TEXT = {
   none: 'Keine eingeschränkten Übungen in den letzten 6 Wochen.',
@@ -38,7 +40,15 @@ const TREND_TEXT = {
     <section class="a-card r-summary">
       <h2>Zusammenfassung</h2>
       <ul class="r-lines">
-        <li v-for="line in overall.lines" :key="line">{{ line }}</li>
+        <li v-for="line in overall.lines" :key="line.text" :class="line.tone">
+          <span class="r-marker" role="img" :aria-label="MARKER_LABEL[line.tone]">{{ MARKER[line.tone] }}</span>
+          <div>
+            {{ line.text }}
+            <ul v-if="line.items" class="r-sublist">
+              <li v-for="item in line.items" :key="item">{{ item }}</li>
+            </ul>
+          </div>
+        </li>
       </ul>
       <p class="r-focus"><strong>Fokus:</strong> {{ overall.focus }}</p>
     </section>
@@ -184,7 +194,13 @@ const TREND_TEXT = {
 .r-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 16px; }
 .r-grid p.a-label { margin: 0; }
 .r-summary { grid-column: 1 / -1; border: 2px solid var(--a-accent); }
-.r-lines { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; font-size: 15px; line-height: 1.5; }
+.r-lines { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; font-size: 15px; line-height: 1.5; }
+.r-lines > li { display: flex; align-items: flex-start; gap: 10px; }
+.r-marker { flex-shrink: 0; width: 20px; height: 20px; margin-top: 2px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 800; color: #fff; background: var(--a-muted); }
+.r-lines > li.good .r-marker { background: #16a34a; }
+.r-lines > li.bad .r-marker { background: #dc2626; }
+.r-sublist { margin: 2px 0 0; padding-left: 18px; }
 .r-focus { margin: 0; padding: 10px 14px; border-radius: 10px; font-size: 15px; background: color-mix(in srgb, var(--a-accent) 10%, transparent); }
 .r-light-row { display: flex; align-items: center; gap: 14px; }
 .r-light { width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0; background: var(--a-line2); box-shadow: inset 0 -3px 0 rgb(0 0 0 / 0.12); }

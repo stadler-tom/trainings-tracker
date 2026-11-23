@@ -161,10 +161,11 @@ describe('summary', () => {
     const log = [...sixWeeks('E1', 80, 2.5), ...sixWeeks('E2', 60, 2.5), ...sixWeeks('E3', 100, 2.5)];
     const d = data(log, body);
     const s = summary(d, statsOf(d), TODAY);
-    expect(s.lines[0]).toBe('Letzte Woche: 1 von 3 Trainingstagen.');
-    expect(s.lines.find((l) => l.startsWith('Kraft:'))).toMatch(/^Kraft: insgesamt \+\d+,\d % seit 14\.10\.2026, in den letzten 3 Wochen \+\d+,\d %\.$/);
-    expect(s.lines.some((l) => l.includes('Rekord'))).toBe(false);
-    expect(s.lines).toContain('Wochensoll nicht erreicht: Brust 3 von 7 Sätzen und Bizeps 0 von 3.');
+    expect(s.lines[0]).toEqual({ text: 'Letzte Woche: 1 von 3 Trainingstagen.', tone: 'bad' });
+    expect(s.lines.find((l) => l.text.startsWith('Kraft:'))?.tone).toBe('good');
+    expect(s.lines.find((l) => l.text.startsWith('Kraft:'))?.text).toMatch(/^Kraft: insgesamt \+\d+,\d % seit 14\.10\.2026, in den letzten 3 Wochen \+\d+,\d %\.$/);
+    expect(s.lines.some((l) => l.text.includes('Rekord'))).toBe(false);
+    expect(s.lines).toContainEqual({ text: 'Wochensoll nicht erreicht:', tone: 'bad', items: ['Brust: 3 von 7 Sätzen', 'Bizeps: 0 von 3 Sätzen'] });
     expect(s.focus).toContain('Trainingstage durchziehen');
   });
   it('a red light is the focus', () => {
@@ -181,7 +182,7 @@ describe('summary', () => {
       ...sets(lastWeek, 'E4', 20, [10, 10, 10]).map((r) => { r[1] = 'Push'; return r; })];
     const d = data(log, body);
     const s = summary(d, statsOf(d), TODAY);
-    expect(s.lines).toContain('Alle Muskelgruppen haben ihr Wochensoll erreicht.');
+    expect(s.lines).toContainEqual({ text: 'Alle Muskelgruppen haben ihr Wochensoll erreicht.', tone: 'good' });
     expect(s.focus).toContain('Weiter so');
   });
 });

@@ -271,11 +271,6 @@ export function limitedTracking(stats: Map<string, ExerciseStats>, today: string
 
 // ---------- tile 0: general summary ----------
 
-/** "A", "A und B", "A, B und C". */
-function listing(items: string[]): string {
-  return items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} und ${items[items.length - 1]}`;
-}
-
 export interface OverallStrength {
   median: number;                  // percent
   since: string;                   // earliest first session of the exercises counted
@@ -302,12 +297,20 @@ export function overallStrength(planned: ExerciseStats[]): OverallStrength | nul
   return { median: sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2, since, count: changes.length };
 }
 
+export type Tone = 'good' | 'bad' | 'neutral';
+
+export interface SummaryLine {
+  text: string;
+  tone: Tone;                      // marker: positive, negative or plain information
+  items?: string[];                // sub-list, e.g. the muscle groups below their weekly plan
+}
+
 export interface Summary {
-  lines: string[];                 // one short statement per topic
+  lines: SummaryLine[];            // one short statement per topic
   focus: string;                   // the one thing to look at first
 }
 
-/** A few sentences from all tiles plus trainings and records, and one focus for the coming week. */
+/** A few statements from all tiles plus trainings and overall strength, and one focus for the coming week. */
 export function summary(data: AnalysisData, stats: Map<string, ExerciseStats>, today: string): Summary {
   const recomp = recomposition(data, stats, today);
   const body = bodyComparison(data, today);
@@ -316,38 +319,44 @@ export function summary(data: AnalysisData, stats: Map<string, ExerciseStats>, t
   const sets = weekSets(data, today);
   const limited = limitedTracking(stats, today);
   const kg = (v: number) => `${v > 0 ? '+' : v < 0 ? '−' : '±'}${formatNumber(Math.abs(Math.round(v * 10) / 10))}`;
-  const lines: string[] = [];
+  const lines: SummaryLine[] = [];
 
   const trainings = trainingCount(data.log, sets.week, addDays(sets.week, 6));
   const planDays = data.days.length;
-  lines.push(`Letzte Woche: ${trainings} von ${planDays} Trainingstagen${sets.deload ? ' (Deload-Woche)' : ''}.`);
+  lines.push({ text: `Letzte Woche: ${trainings} von ${planDays} Trainingstagen${sets.deload ? ' (Deload-Woche)' : ''}.`,
+    tone: trainings >= planDays || sets.deload ? 'good' : 'bad' });
 
   const overall = overallStrength(planned);
   if (overall) {
     const recent = recomp.strength ? `, in den letzten 3 Wochen ${kg(recomp.strength.median)} %` : '';
-    lines.push(`Kraft: insgesamt ${kg(overall.median)} % seit ${formatIsoDate(overall.since)}${recent}.`);
+    const value = recomp.strength ? recomp.strength.median : overall.median;
+    lines.push({ text: `Kraft: insgesamt ${kg(overall.median)} % seit ${formatIsoDate(overall.since)}${recent}.`,
+      tone: value >= STRENGTH_UP ? 'good' : value <= STRENGTH_DOWN ? 'bad' : 'neutral' });
   }
 
   if (body.weight) {
-    lines.push(`Gewicht: ${kg(body.weight.change)} kg in 2 Wochen (geplant ${kg(body.weight.expected)} kg). ${body.weight.text}`);
+    lines.push({ text: `Gewicht: ${kg(body.weight.change)} kg in 2 Wochen (geplant ${kg(body.weight.expected)} kg). ${body.weight.text}`,
+      tone: body.weight.status === 'onTrack' ? 'good' : 'bad' });
   } else if (recomp.slope !== null) {
-    lines.push(`Gewicht: Trend ${kg(recomp.slope)} kg pro Woche.`);
+    lines.push({ text: `Gewicht: Trend ${kg(recomp.slope)} kg pro Woche.`, tone: 'neutral' });
   }
   if (body.waist?.change != null) {
-    lines.push(`Bauchumfang: ${kg(body.waist.change)} cm in 3+ Wochen${body.waist.change <= -1 ? ', das spricht für Fettverlust.' : '.'}`);
+    const change = body.waist.change;
+    lines.push({ text: `Bauchumfang: ${kg(change)} cm in 3+ Wochen${change <= -1 ? ', das spricht für Fettverlust.' : '.'}`,
+      tone: change < 0 ? 'good' : change > 0 ? 'bad' : 'neutral' });
   }
 
   if (stalled.length) {
     const names = stalled.slice(0, 3).map((s) => s.stats.exercise.name).join(', ');
-    lines.push(`Stillstand bei ${stalled.length} ${stalled.length === 1 ? 'Übung' : 'Übungen'}: ${names}${stalled.length > 3 ? ' …' : ''}.`);
+    lines.push({ text: `Stillstand bei ${stalled.length} ${stalled.length === 1 ? 'Übung' : 'Übungen'}: ${names}${stalled.length > 3 ? ' …' : ''}.`, tone: 'bad' });
   } else if (planned.length) {
-    lines.push('Keine Übung steht still.');
+    lines.push({ text: 'Keine Übung steht still.', tone: 'good' });
   }
 
   if (sets.hasPlan) {
     lines.push(sets.short.length
-      ? `Wochensoll nicht erreicht: ${listing(sets.short.map((s, i) => `${s.group} ${s.done} von ${s.planned}${i === 0 ? ' Sätzen' : ''}`))}.`
-      : 'Alle Muskelgruppen haben ihr Wochensoll erreicht.');
+      ? { text: 'Wochensoll nicht erreicht:', tone: 'bad', items: sets.short.map((s) => `${s.group}: ${s.done} von ${s.planned} Sätzen`) }
+      : { text: 'Alle Muskelgruppen haben ihr Wochensoll erreicht.', tone: 'good' });
   }
 
   // one focus, most important first
