@@ -3,7 +3,7 @@ import type { BodyEntry, Exercise } from '../api';
 import { addDays } from '../format';
 import { exerciseStats, type AnalysisData, type ExerciseStats, type LogRow } from './analysis';
 import {
-  limitedTracking, plannedSets, plannedStats, recomposition, reentryDate, stallOf, strengthIndex, weekSets, weightSlope,
+  limitedTracking, plannedSets, plannedStats, recomposition, reentryDate, stallOf, strengthIndex, summary, weekSets, weightSlope,
 } from './recap';
 
 const TODAY = '2026-11-23';        // a Monday
@@ -152,5 +152,35 @@ describe('limitedTracking', () => {
   });
   it('none without limited sessions', () => {
     expect(limitedTracking(statsOf(data(sets('2026-11-18', 'E1', 80, [8]))), TODAY).trend).toBe('none');
+  });
+});
+
+describe('summary', () => {
+  const body = weighings(addDays(TODAY, -27), 28, 98, -0.5);
+  it('sums up all tiles and puts missed trainings first when the light is not red', () => {
+    const log = [...sixWeeks('E1', 80, 2.5), ...sixWeeks('E2', 60, 2.5), ...sixWeeks('E3', 100, 2.5)];
+    const d = data(log, body);
+    const s = summary(d, statsOf(d), TODAY);
+    expect(s.lines[0]).toBe('Letzte Woche: 1 von 3 Trainingstagen.');
+    expect(s.lines.some((l) => l.startsWith('Kraft: +'))).toBe(true);
+    expect(s.lines.some((l) => l.startsWith('Wochensoll verfehlt bei Brust'))).toBe(true);
+    expect(s.focus).toContain('Trainingstage durchziehen');
+  });
+  it('a red light is the focus', () => {
+    const log = [...sixWeeks('E1', 80, -2.5), ...sixWeeks('E2', 60, -2.5), ...sixWeeks('E3', 100, -2.5)];
+    const d = data(log, body);
+    expect(summary(d, statsOf(d), TODAY).focus).toContain('Kraft sinkt im Defizit');
+  });
+  it('all good: keep going', () => {
+    const lastWeek = '2026-11-16';
+    const log = [...sixWeeks('E1', 80, 2.5), ...sixWeeks('E2', 60, 2.5), ...sixWeeks('E3', 100, 2.5),
+      ...sets(lastWeek, 'E1', 90, [8, 8, 8, 8, 8, 8, 8]).map((r) => { r[1] = 'Push'; return r; }),
+      ...sets('2026-11-18', 'E2', 70, [8, 8, 8]).map((r) => { r[1] = 'Pull'; return r; }),
+      ...sets('2026-11-19', 'E3', 115, [8, 8, 8]).map((r) => { r[1] = 'Beine'; return r; }),
+      ...sets(lastWeek, 'E4', 20, [10, 10, 10]).map((r) => { r[1] = 'Push'; return r; })];
+    const d = data(log, body);
+    const s = summary(d, statsOf(d), TODAY);
+    expect(s.lines).toContain('Alle Muskelgruppen haben ihr Wochensoll erreicht.');
+    expect(s.focus).toContain('Weiter so');
   });
 });

@@ -5,7 +5,8 @@
 
 import { weekStart, weightCheck, waistTrend } from '../body';
 import { addDays } from '../format';
-import { weeklySets, type AnalysisData, type ExerciseStats, type Session } from './analysis';
+import { trainingCount, weeklySets, type AnalysisData, type ExerciseStats, type Session } from './analysis';
+import { formatNumber } from '../training';
 
 const DAY_MS = 86_400_000;
 const days = (from: string, to: string) => Math.round((Date.parse(to) - Date.parse(from)) / DAY_MS);
@@ -266,4 +267,76 @@ export function limitedTracking(stats: Map<string, ExerciseStats>, today: string
   const recent = weeks.slice(half).reduce((n, w) => n + w.count, 0);
   const trend = earlier + recent === 0 ? 'none' : recent < earlier ? 'better' : recent > earlier ? 'worse' : 'same';
   return { weeks, exercises, trend };
+}
+
+// ---------- tile 0: general summary ----------
+
+export interface Summary {
+  lines: string[];                 // one short statement per topic
+  focus: string;                   // the one thing to look at first
+}
+
+const RECORD_DAYS = 28;
+
+/** A few sentences from all tiles plus trainings and records, and one focus for the coming week. */
+export function summary(data: AnalysisData, stats: Map<string, ExerciseStats>, today: string): Summary {
+  const recomp = recomposition(data, stats, today);
+  const body = bodyComparison(data, today);
+  const planned = plannedStats(data, stats);
+  const stalled = stalls(planned);
+  const sets = weekSets(data, today);
+  const limited = limitedTracking(stats, today);
+  const kg = (v: number) => `${v > 0 ? '+' : v < 0 ? '−' : '±'}${formatNumber(Math.abs(Math.round(v * 10) / 10))}`;
+  const lines: string[] = [];
+
+  const trainings = trainingCount(data.log, sets.week, addDays(sets.week, 6));
+  const planDays = data.days.length;
+  lines.push(`Letzte Woche: ${trainings} von ${planDays} Trainingstagen${sets.deload ? ' (Deload-Woche)' : ''}.`);
+
+  const since = addDays(today, -(RECORD_DAYS - 1));
+  const records = planned.reduce((n, s) => n + s.regular.filter((x) => x.isRecord && x.date >= since).length, 0);
+  if (recomp.strength) {
+    lines.push(`Kraft: ${kg(recomp.strength.median)} % gegenüber den 3 Wochen davor, ${records} ${records === 1 ? 'neuer Rekord' : 'neue Rekorde'} in 4 Wochen.`);
+  } else {
+    lines.push(`${records} ${records === 1 ? 'neuer Rekord' : 'neue Rekorde'} in 4 Wochen.`);
+  }
+
+  if (body.weight) {
+    lines.push(`Gewicht: ${kg(body.weight.change)} kg in 2 Wochen (geplant ${kg(body.weight.expected)} kg). ${body.weight.text}`);
+  } else if (recomp.slope !== null) {
+    lines.push(`Gewicht: Trend ${kg(recomp.slope)} kg pro Woche.`);
+  }
+  if (body.waist?.change != null) {
+    lines.push(`Bauchumfang: ${kg(body.waist.change)} cm in 3+ Wochen${body.waist.change <= -1 ? ', das spricht für Fettverlust.' : '.'}`);
+  }
+
+  if (stalled.length) {
+    const names = stalled.slice(0, 3).map((s) => s.stats.exercise.name).join(', ');
+    lines.push(`Stillstand bei ${stalled.length} ${stalled.length === 1 ? 'Übung' : 'Übungen'}: ${names}${stalled.length > 3 ? ' …' : ''}.`);
+  } else if (planned.length) {
+    lines.push('Keine Übung steht still.');
+  }
+
+  if (sets.hasPlan) {
+    lines.push(sets.short.length
+      ? `Wochensoll verfehlt bei ${sets.short.map((s) => `${s.group} (${s.done}/${s.planned})`).join(', ')}.`
+      : 'Alle Muskelgruppen haben ihr Wochensoll erreicht.');
+  }
+
+  const limitedCount = limited.weeks.reduce((n, w) => n + w.count, 0);
+  if (limitedCount) {
+    const trend = { better: 'Tendenz besser', same: 'Tendenz gleich', worse: 'Tendenz schlechter', none: '' }[limited.trend];
+    lines.push(`Eingeschränkt: ${limitedCount}× in 6 Wochen, ${trend}.`);
+  }
+
+  // one focus, most important first
+  let focus = 'Weiter so: nichts ändern, nächste Woche wieder reinschauen.';
+  if (recomp.light === 'red') focus = `${recomp.verdict} ${recomp.advice}`;
+  else if (trainings < planDays && !sets.deload) focus = 'Trainingstage durchziehen: Verpasste Einheiten bremsen mehr als jedes falsche Gewicht.';
+  else if (sets.short.length) focus = `Wochensätze auffüllen, zuerst ${sets.short[0].group}.`;
+  else if (limited.trend === 'worse') focus = 'Eingeschränkte Übungen nehmen zu: Ursache klären, notfalls ärztlich abklären lassen.';
+  else if (recomp.light === 'yellow') focus = `${recomp.verdict} ${recomp.advice}`;
+  else if (stalled.length) focus = `Stillstand angehen, zuerst ${stalled[0].stats.exercise.name}.`;
+  else if (recomp.light === 'none') focus = 'Für eine Bewertung regelmäßig wiegen (mind. 3× pro Woche) und trainieren.';
+  return { lines, focus };
 }

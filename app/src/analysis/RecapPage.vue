@@ -5,7 +5,7 @@ import { signedKg } from '../body';
 import { addDays, formatIsoDate, todayIso } from '../format';
 import { formatNumber } from '../training';
 import { signed, type AnalysisData, type ExerciseStats } from './analysis';
-import { bodyComparison, limitedTracking, plannedStats, recomposition, stalls, weekSets, STRENGTH_WINDOW_DAYS, TREND_DAYS } from './recap';
+import { bodyComparison, limitedTracking, plannedStats, recomposition, stalls, summary, weekSets, STRENGTH_WINDOW_DAYS, TREND_DAYS } from './recap';
 
 const props = defineProps<{ data: AnalysisData; stats: Map<string, ExerciseStats> }>();
 const emit = defineEmits<{ open: [id: string] }>();
@@ -13,6 +13,7 @@ const emit = defineEmits<{ open: [id: string] }>();
 const today = todayIso();
 const short = (iso: string) => formatIsoDate(iso).slice(0, 6);
 
+const overall = computed(() => summary(props.data, props.stats, today));
 const recomp = computed(() => recomposition(props.data, props.stats, today));
 const body = computed(() => bodyComparison(props.data, today));
 const stalled = computed(() => stalls(plannedStats(props.data, props.stats)));
@@ -33,6 +34,15 @@ const TREND_TEXT = {
   <div class="a-bar"><h1>Recap</h1></div>
 
   <div class="r-grid">
+    <!-- 0: general summary -->
+    <section class="a-card r-summary">
+      <h2>Zusammenfassung</h2>
+      <ul class="r-lines">
+        <li v-for="line in overall.lines" :key="line">{{ line }}</li>
+      </ul>
+      <p class="r-focus"><strong>Fokus:</strong> {{ overall.focus }}</p>
+    </section>
+
     <!-- 1: recomposition traffic light -->
     <section class="a-card">
       <h2>Rekompositions-Ampel</h2>
@@ -173,6 +183,9 @@ const TREND_TEXT = {
 <style scoped>
 .r-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 16px; }
 .r-grid p.a-label { margin: 0; }
+.r-summary { grid-column: 1 / -1; border: 2px solid var(--a-accent); }
+.r-lines { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; font-size: 15px; line-height: 1.5; }
+.r-focus { margin: 0; padding: 10px 14px; border-radius: 10px; font-size: 15px; background: color-mix(in srgb, var(--a-accent) 10%, transparent); }
 .r-light-row { display: flex; align-items: center; gap: 14px; }
 .r-light { width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0; background: var(--a-line2); box-shadow: inset 0 -3px 0 rgb(0 0 0 / 0.12); }
 .r-light.green { background: #16a34a; }
