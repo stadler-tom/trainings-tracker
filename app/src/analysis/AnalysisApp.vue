@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // PC analysis (requirements spec "PC-Auswertung (Subpage)"): read-only, opened from a bookmark.
 // Five pages and a handful of states: a simple switch is enough, no router needed.
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { errorMessage, getAnalysis } from '../api';
 import { loadSettings, parseSetupLink, saveSettings, type Settings } from '../storage';
 import { exerciseStats, type AnalysisData, type ExerciseStats } from './analysis';
@@ -22,9 +22,42 @@ const PAGES: { id: Page; label: string }[] = [
   { id: 'body', label: 'Körper' },
 ];
 
+const settings = ref<Settings>(takeSetupLink());
 const page = ref<Page>('overview');
 const selectedExercise = ref<string | null>(null);
-const settings = ref<Settings>(takeSetupLink());
+
+// The page (and the chosen exercise) is in the address, e.g. #recap or #uebung/E06, so reloading the
+// browser, a bookmark and the back button keep the place. Read after takeSetupLink removed a setup link.
+const SLUGS: Record<Page, string> = { overview: 'uebersicht', recap: 'recap', exercise: 'uebung', volume: 'volumen', body: 'koerper' };
+
+function readAddress() {
+  const [slug, id] = window.location.hash.slice(1).split('/');
+  const found = (Object.keys(SLUGS) as Page[]).find((p) => SLUGS[p] === slug);
+  page.value = found ?? 'overview';
+  if (found === 'exercise' && id) selectedExercise.value = decodeURIComponent(id);
+}
+
+function address(): string {
+  const id = page.value === 'exercise' && selectedExercise.value ? `/${encodeURIComponent(selectedExercise.value)}` : '';
+  return `#${SLUGS[page.value]}${id}`;
+}
+
+readAddress();
+// a new page is a new history entry (back button), another exercise on the same page is not
+watch([page, selectedExercise], ([newPage], [oldPage]) => {
+  const next = address();
+  if (window.location.hash === next) return;
+  const url = window.location.pathname + window.location.search + next;
+  if (newPage !== oldPage) history.pushState(null, '', url);
+  else history.replaceState(null, '', url);
+});
+// a setup link pasted into the open page arrives as an address change too
+function addressChanged() {
+  if (parseSetupLink(window.location.href)) { settings.value = takeSetupLink(); load(); }
+  readAddress();
+}
+window.addEventListener('popstate', addressChanged);
+onUnmounted(() => window.removeEventListener('popstate', addressChanged));
 const data = ref<AnalysisData | null>(null);
 const loadedAt = ref('');
 const loading = ref(false);

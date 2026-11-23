@@ -3,7 +3,7 @@ import type { BodyEntry, Exercise } from '../api';
 import { addDays } from '../format';
 import { exerciseStats, type AnalysisData, type ExerciseStats, type LogRow } from './analysis';
 import {
-  limitedTracking, plannedSets, plannedStats, recomposition, reentryDate, stallOf, strengthIndex, summary, weekSets, weightSlope,
+  limitedTracking, plannedSets, plannedStats, overallStrength, recomposition, reentryDate, stallOf, strengthIndex, summary, weekSets, weightSlope,
 } from './recap';
 
 const TODAY = '2026-11-23';        // a Monday
@@ -162,8 +162,9 @@ describe('summary', () => {
     const d = data(log, body);
     const s = summary(d, statsOf(d), TODAY);
     expect(s.lines[0]).toBe('Letzte Woche: 1 von 3 Trainingstagen.');
-    expect(s.lines.some((l) => l.startsWith('Kraft: +'))).toBe(true);
-    expect(s.lines.some((l) => l.startsWith('Wochensoll verfehlt bei Brust'))).toBe(true);
+    expect(s.lines.find((l) => l.startsWith('Kraft:'))).toMatch(/^Kraft: insgesamt \+\d+,\d % seit 14\.10\.2026, in den letzten 3 Wochen \+\d+,\d %\.$/);
+    expect(s.lines.some((l) => l.includes('Rekord'))).toBe(false);
+    expect(s.lines).toContain('Wochensoll nicht erreicht: Brust 3 von 7 Sätzen und Bizeps 0 von 3.');
     expect(s.focus).toContain('Trainingstage durchziehen');
   });
   it('a red light is the focus', () => {
@@ -182,5 +183,18 @@ describe('summary', () => {
     const s = summary(d, statsOf(d), TODAY);
     expect(s.lines).toContain('Alle Muskelgruppen haben ihr Wochensoll erreicht.');
     expect(s.focus).toContain('Weiter so');
+  });
+});
+
+describe('overallStrength', () => {
+  it('median of newest against first e1RM per exercise, since the earliest first session', () => {
+    const d = data([...sets('2026-10-01', 'E1', 80, [8]), ...sets('2026-11-20', 'E1', 88, [8]),
+      ...sets('2026-10-05', 'E2', 60, [8]), ...sets('2026-11-19', 'E2', 60, [8]),
+      ...sets('2026-10-03', 'E3', 100, [8]), ...sets('2026-11-18', 'E3', 105, [8]),
+      ...sets('2026-11-18', 'E4', 20, [8])]);
+    const o = overallStrength(plannedStats(d, statsOf(d)))!;
+    expect(o.count).toBe(3);                         // curls: only one session
+    expect(o.median).toBeCloseTo(5, 5);              // +10 %, 0 %, +5 %
+    expect(o.since).toBe('2026-10-01');
   });
 });

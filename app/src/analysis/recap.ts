@@ -4,7 +4,7 @@
 // fixed thresholds are more honest than significance tests.
 
 import { weekStart, weightCheck, waistTrend } from '../body';
-import { addDays } from '../format';
+import { addDays, formatIsoDate } from '../format';
 import { trainingCount, weeklySets, type AnalysisData, type ExerciseStats, type Session } from './analysis';
 import { formatNumber } from '../training';
 
@@ -271,12 +271,41 @@ export function limitedTracking(stats: Map<string, ExerciseStats>, today: string
 
 // ---------- tile 0: general summary ----------
 
+/** "A", "A und B", "A, B und C". */
+function listing(items: string[]): string {
+  return items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} und ${items[items.length - 1]}`;
+}
+
+export interface OverallStrength {
+  median: number;                  // percent
+  since: string;                   // earliest first session of the exercises counted
+  count: number;
+}
+
+/**
+ * How much stronger overall: per planned exercise the newest regular e1RM against its first
+ * regular one, in percent; the median over all exercises with at least 2 regular sessions.
+ */
+export function overallStrength(planned: ExerciseStats[]): OverallStrength | null {
+  const changes: number[] = [];
+  let since = '';
+  for (const s of planned) {
+    if (s.regular.length < 2) continue;
+    const first = s.regular[0];
+    const last = s.regular[s.regular.length - 1];
+    changes.push(((last.e1rm - first.e1rm) / first.e1rm) * 100);
+    if (!since || first.date < since) since = first.date;
+  }
+  if (!changes.length) return null;
+  const sorted = [...changes].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return { median: sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2, since, count: changes.length };
+}
+
 export interface Summary {
   lines: string[];                 // one short statement per topic
   focus: string;                   // the one thing to look at first
 }
-
-const RECORD_DAYS = 28;
 
 /** A few sentences from all tiles plus trainings and records, and one focus for the coming week. */
 export function summary(data: AnalysisData, stats: Map<string, ExerciseStats>, today: string): Summary {
@@ -293,12 +322,10 @@ export function summary(data: AnalysisData, stats: Map<string, ExerciseStats>, t
   const planDays = data.days.length;
   lines.push(`Letzte Woche: ${trainings} von ${planDays} Trainingstagen${sets.deload ? ' (Deload-Woche)' : ''}.`);
 
-  const since = addDays(today, -(RECORD_DAYS - 1));
-  const records = planned.reduce((n, s) => n + s.regular.filter((x) => x.isRecord && x.date >= since).length, 0);
-  if (recomp.strength) {
-    lines.push(`Kraft: ${kg(recomp.strength.median)} % gegenüber den 3 Wochen davor, ${records} ${records === 1 ? 'neuer Rekord' : 'neue Rekorde'} in 4 Wochen.`);
-  } else {
-    lines.push(`${records} ${records === 1 ? 'neuer Rekord' : 'neue Rekorde'} in 4 Wochen.`);
+  const overall = overallStrength(planned);
+  if (overall) {
+    const recent = recomp.strength ? `, in den letzten 3 Wochen ${kg(recomp.strength.median)} %` : '';
+    lines.push(`Kraft: insgesamt ${kg(overall.median)} % seit ${formatIsoDate(overall.since)}${recent}.`);
   }
 
   if (body.weight) {
@@ -319,14 +346,8 @@ export function summary(data: AnalysisData, stats: Map<string, ExerciseStats>, t
 
   if (sets.hasPlan) {
     lines.push(sets.short.length
-      ? `Wochensoll verfehlt bei ${sets.short.map((s) => `${s.group} (${s.done}/${s.planned})`).join(', ')}.`
+      ? `Wochensoll nicht erreicht: ${listing(sets.short.map((s, i) => `${s.group} ${s.done} von ${s.planned}${i === 0 ? ' Sätzen' : ''}`))}.`
       : 'Alle Muskelgruppen haben ihr Wochensoll erreicht.');
-  }
-
-  const limitedCount = limited.weeks.reduce((n, w) => n + w.count, 0);
-  if (limitedCount) {
-    const trend = { better: 'Tendenz besser', same: 'Tendenz gleich', worse: 'Tendenz schlechter', none: '' }[limited.trend];
-    lines.push(`Eingeschränkt: ${limitedCount}× in 6 Wochen, ${trend}.`);
   }
 
   // one focus, most important first
