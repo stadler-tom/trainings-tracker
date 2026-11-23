@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // PC analysis (requirements spec "PC-Auswertung (Subpage)"): read-only, opened from a bookmark.
-// Four pages and a handful of states: a simple switch is enough, no router needed.
+// Five pages and a handful of states: a simple switch is enough, no router needed.
 import { computed, onMounted, ref } from 'vue';
 import { errorMessage, getAnalysis } from '../api';
 import { loadSettings, parseSetupLink, saveSettings, type Settings } from '../storage';
@@ -10,11 +10,13 @@ import OverviewPage from './OverviewPage.vue';
 import ExercisePage from './ExercisePage.vue';
 import VolumePage from './VolumePage.vue';
 import BodyPage from './BodyPage.vue';
+import RecapPage from './RecapPage.vue';
 import SetupPage from './SetupPage.vue';
 
-type Page = 'overview' | 'exercise' | 'volume' | 'body';
+type Page = 'overview' | 'recap' | 'exercise' | 'volume' | 'body';
 const PAGES: { id: Page; label: string }[] = [
   { id: 'overview', label: 'Übersicht' },
+  { id: 'recap', label: 'Recap' },
   { id: 'exercise', label: 'Übung' },
   { id: 'volume', label: 'Volumen' },
   { id: 'body', label: 'Körper' },
@@ -135,6 +137,7 @@ onMounted(load);
         <p v-if="loading && !data" class="a-muted">Daten werden aus dem Sheet geladen …</p>
         <template v-if="data">
           <OverviewPage v-if="page === 'overview'" :data="data" :stats="stats" @open="openExercise" />
+          <RecapPage v-else-if="page === 'recap'" :data="data" :stats="stats" @open="openExercise" />
           <ExercisePage v-else-if="page === 'exercise'" v-model:selected="selectedExercise" :data="data" :stats="stats" />
           <VolumePage v-else-if="page === 'volume'" :data="data" />
           <BodyPage v-else :data="data" :stats="stats" />

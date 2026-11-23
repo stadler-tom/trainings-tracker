@@ -133,7 +133,7 @@ Wichtig: Den Link in den Einstellungen der App einfügen, nicht in Safari öffne
 
 ## Auswertung
 
-Die Auswertung ist eine eigene Seite der App für den PC. Dort findest du eine Übersicht aller Übungen, den Verlauf je Übung, das Volumen je Muskelgruppe und deine Körperwerte. Sie liest nur und ändert nichts im Sheet.
+Die Auswertung ist eine eigene Seite der App für den PC. Dort findest du eine Übersicht aller Übungen, den Verlauf je Übung, das Volumen je Muskelgruppe und deine Körperwerte. Unter **Recap** stehen die wichtigsten Aussagen als Kacheln: eine Ampel aus Gewichtstrend und Kraftentwicklung, dein Gewicht im Vergleich zu vor 2 Wochen mit Bauchumfang, Übungen im Stillstand, Muskelgruppen unter ihrem Wochensoll und deine eingeschränkten Übungen der letzten 6 Wochen. Sie liest nur und ändert nichts im Sheet.
 
 1. Im Script-Editor **showSetupLink** ausführen (siehe Schritt 5).
 2. Den zweiten Link (**PC-Auswertung**) kopieren und im Browser als **Lesezeichen** anlegen.
