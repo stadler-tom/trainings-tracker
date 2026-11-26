@@ -6,6 +6,7 @@ import { formatNumber } from '../training';
 import { nextTraining, oneDecimal, perSetCount, rangeLabel, sessionText, rangeStart, signed, STATUS_TEXT, type AnalysisData, type ChartRange, type ExerciseStats, type Session } from './analysis';
 import RangeButtons from './RangeButtons.vue';
 import LineChart, { type ChartMark } from './LineChart.vue';
+import { dropOff, relativeStrength, repRecords } from './insights';
 
 const props = defineProps<{ data: AnalysisData; stats: Map<string, ExerciseStats> }>();
 const selected = defineModel<string | null>('selected', { required: true });
@@ -130,6 +131,28 @@ function onBarMove(index: number, event: MouseEvent) {
   };
 }
 
+// fatigue within a session: drop from the best to the weakest set
+function dropText(x: Session): string {
+  const d = current.value ? dropOff(x, current.value, props.data.body) : null;
+  return d === null ? '–' : `−${Math.round(d)} %`;
+}
+
+// rep records: heaviest weight per rep count (information only, no records in the sense of the app)
+const reps = computed(() => (current.value ? repRecords(current.value) : []));
+
+// relative strength: e1RM per kg body weight, in the chosen range
+const relative = computed(() => (current.value ? relativeStrength(current.value, props.data.body) : []).filter((p) => p.date >= from.value));
+const relativeLine = computed(() => relative.value.map((p) => ({
+  date: p.date, value: p.ratio,
+  info: [`${p.ratio.toFixed(2).replace('.', ',')} kg e1RM je kg Körpergewicht`, `Körpergewicht ${formatNumber(p.bodyWeight)} kg`],
+})));
+const relativeChange = computed(() => {
+  const list = relative.value;
+  if (list.length < 2) return null;
+  const change = ((list[list.length - 1].ratio - list[0].ratio) / list[0].ratio) * 100;
+  return { text: `${signed(change)} % seit ${formatIsoDate(list[0].date)}`, cls: Math.abs(change) < 0.5 ? '' : change > 0 ? 'a-good' : 'a-bad' };
+});
+
 // last 6 entries: sessions incl. deload and 1RM tests, newest first
 const rows = computed(() => {
   const s = current.value;
@@ -138,9 +161,10 @@ const rows = computed(() => {
     date: x.date, kg: x.kgs.every((kg) => kg === x.kg) ? formatNumber(x.kg) : x.kgs.map((kg) => formatNumber(kg)).join(' / '),
     sets: x.reps.join(' / ') + x.drops.map((d) => ` + Drop ${formatNumber(d.kg)} × ${d.reps}`).join('') + (x.deload ? ' (Deload)' : '') + (x.limited !== null ? ` (eingeschränkt${x.limited ? `: ${x.limited}` : ''})` : ''),
     e1rm: oneDecimal(x.e1rm), volume: `${Math.round(x.volume).toLocaleString('de-DE')} kg`, strong: x.isRecord, test: false,
+    drop: dropText(x),
   }));
   const tests = s.tests.map((t) => ({
-    date: t.date, kg: formatNumber(t.kg), sets: '1 (1RM-Test)', e1rm: 'getestet', volume: '–', strong: true, test: true,
+    date: t.date, kg: formatNumber(t.kg), sets: '1 (1RM-Test)', e1rm: 'getestet', volume: '–', strong: true, test: true, drop: '–',
   }));
   return [...sessions, ...tests].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0)).slice(0, 6);
 });
@@ -239,19 +263,57 @@ const rows = computed(() => {
         <h2>Letzte Einheiten</h2>
         <div class="a-scroll">
           <table class="a-table">
-            <thead><tr><th>Datum</th><th>kg</th><th>Sätze</th><th class="num">e1RM</th><th class="num">Volumen</th></tr></thead>
+            <thead><tr><th>Datum</th><th>kg</th><th>Sätze</th><th class="num">e1RM</th><th class="num" title="Abfall vom besten zum schwächsten Satz">Abfall</th><th class="num">Volumen</th></tr></thead>
             <tbody>
               <tr v-for="r in rows" :key="r.date + r.sets">
                 <td>{{ formatIsoDate(r.date) }}</td>
                 <td>{{ r.kg }}</td>
                 <td>{{ r.sets }}</td>
                 <td class="num" :style="{ fontWeight: r.strong ? 700 : 400, color: r.strong && !r.test ? 'var(--a-record)' : undefined }">{{ r.e1rm }}</td>
+                <td class="num">{{ r.drop }}</td>
                 <td class="num">{{ r.volume }}</td>
               </tr>
             </tbody>
           </table>
           <p v-if="!rows.length" class="a-note">Noch keine Einheit gespeichert.</p>
         </div>
+        <p class="a-note">Abfall: wie viele Wiederholungen der schwächste Satz unter dem besten liegt, in Prozent (z. B. 15 → 11 = −27 %; bei unterschiedlichen Gewichten umgerechnet auf das schwerste). Steigt er über Wochen, ist das ein frühes Zeichen für Ermüdung.</p>
+      </section>
+    </div>
+
+    <div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: stretch">
+      <section class="a-card" style="flex: 1 1 420px; min-width: 0">
+        <div class="a-bar" style="gap: 8px">
+          <h2>Relative Kraft (e1RM je kg Körpergewicht)</h2>
+          <strong v-if="relativeChange" :class="relativeChange.cls">{{ relativeChange.text }}</strong>
+        </div>
+        <LineChart
+          v-if="relativeLine.length"
+          :lines="[{ points: relativeLine, color: 'var(--a-chart)', dots: true }]"
+          :from="relativeLine[0].date"
+          :to="relativeLine[relativeLine.length - 1].date"
+          :digits="2"
+          label="Linienchart relative Kraft je Einheit"
+        />
+        <p v-else class="a-note">Keine Einheit mit einer Wiegung in der Nähe (höchstens 14 Tage Abstand) in diesem Zeitraum.</p>
+        <p class="a-note">Steigt die Linie, während das Körpergewicht fällt, verlierst du Fett und keine Kraft.</p>
+      </section>
+      <section class="a-card" style="flex: 1 1 420px; min-width: 0">
+        <h2>Wiederholungsrekorde</h2>
+        <div v-if="reps.length" class="a-scroll">
+          <table class="a-table">
+            <thead><tr><th class="num">Wdh</th><th class="num">kg</th><th>am</th></tr></thead>
+            <tbody>
+              <tr v-for="r in reps" :key="r.reps" :class="{ 'a-muted': r.beaten }">
+                <td class="num">{{ r.reps }}</td>
+                <td class="num">{{ formatNumber(r.kg) }}</td>
+                <td>{{ formatIsoDate(r.date) }}<template v-if="r.beaten"> · überholt</template></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p v-else class="a-note">Noch keine Einheit gespeichert.</p>
+        <p class="a-note">Schwerstes Gewicht je Wiederholungszahl, ohne Drops, 1RM-Tests und eingeschränkte Sätze. „Überholt“: mit mindestens diesem Gewicht wurden schon mehr Wiederholungen geschafft. Nur zur Information, zählt nicht als Rekord.</p>
       </section>
     </div>
   </template>

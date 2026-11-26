@@ -5,6 +5,7 @@ import { signedKg } from '../body';
 import { addDays, formatIsoDate, todayIso } from '../format';
 import { formatNumber } from '../training';
 import { signed, type AnalysisData, type ExerciseStats } from './analysis';
+import { fatigue, progressRates, relativeChanges, suspicious, FATIGUE_HIGH, JUMP_PERCENT, RATE_DAYS, RELATIVE_DAYS } from './insights';
 import { bodyComparison, limitedTracking, plannedStats, recomposition, stalls, summary, weekSets, STRENGTH_WINDOW_DAYS, TREND_DAYS } from './recap';
 
 const props = defineProps<{ data: AnalysisData; stats: Map<string, ExerciseStats> }>();
@@ -13,6 +14,13 @@ const emit = defineEmits<{ open: [id: string] }>();
 const today = todayIso();
 const short = (iso: string) => formatIsoDate(iso).slice(0, 6);
 
+const planned = computed(() => plannedStats(props.data, props.stats));
+const relative = computed(() => relativeChanges(planned.value, props.data.body, today));
+const rates = computed(() => progressRates(planned.value, today));
+const tired = computed(() => fatigue(planned.value, props.data.body, today));
+const odd = computed(() => suspicious([...props.stats.values()]).slice(0, 10));
+const pct = (v: number) => `${signed(v)} %`;
+const percentClass = (v: number, small = 0.5) => (Math.abs(v) < small ? '' : v > 0 ? 'a-good' : 'a-bad');
 const overall = computed(() => summary(props.data, props.stats, today));
 const recomp = computed(() => recomposition(props.data, props.stats, today));
 const body = computed(() => bodyComparison(props.data, today));
@@ -125,6 +133,23 @@ const TREND_TEXT = {
       <p class="a-note">Bewertet wird der Wochenschnitt gegen den von vor 2 Wochen, nie ein einzelner Tag.</p>
     </section>
 
+    <!-- relative strength -->
+    <section class="a-card">
+      <h2>Relative Kraft</h2>
+      <table v-if="relative.length" class="a-table">
+        <thead><tr><th>Grundübung</th><th class="num">kg e1RM je kg Körper</th><th class="num">{{ RELATIVE_DAYS / 7 }} Wochen</th></tr></thead>
+        <tbody>
+          <tr v-for="r in relative" :key="r.stats.exercise.id">
+            <td><button type="button" class="a-link" @click="emit('open', r.stats.exercise.id)">{{ r.stats.exercise.name }}</button></td>
+            <td class="num">{{ r.last.ratio.toFixed(2).replace('.', ',') }}</td>
+            <td class="num" :class="percentClass(r.change)">{{ pct(r.change) }}</td>
+          </tr>
+        </tbody>
+      </table>
+      <p v-else class="a-muted">Noch keine Grundübung mit 2 Einheiten und Wiegungen in der Nähe in den letzten {{ RELATIVE_DAYS / 7 }} Wochen.</p>
+      <p class="a-note">e1RM geteilt durch das Körpergewicht (Wiegung höchstens 14 Tage entfernt). Steigt der Wert, während das Gewicht fällt, verlierst du Fett und keine Kraft. Nur Übungen vom Typ „Grundübung“ im Plan.</p>
+    </section>
+
     <!-- 3: stalled exercises -->
     <section class="a-card">
       <h2>Stillstand</h2>
@@ -142,6 +167,23 @@ const TREND_TEXT = {
         Stillstand: 3 Einheiten in Folge ohne höheres e1RM und ohne schwereres Gewicht als bei der letzten Einheit mit Fortschritt.
         Eine Gewichtserhöhung zählt als Fortschritt, auch wenn danach Wiederholungen fehlen.
       </p>
+    </section>
+
+    <!-- progress rate -->
+    <section class="a-card">
+      <h2>Fortschrittstempo</h2>
+      <table v-if="rates.length" class="a-table">
+        <thead><tr><th>Übung</th><th class="num">pro Woche</th><th class="num">Einheiten</th></tr></thead>
+        <tbody>
+          <tr v-for="r in rates" :key="r.stats.exercise.id">
+            <td><button type="button" class="a-link" @click="emit('open', r.stats.exercise.id)">{{ r.stats.exercise.name }}</button></td>
+            <td class="num" :class="percentClass(r.perWeek, 0.25)">{{ pct(r.perWeek) }}</td>
+            <td class="num">{{ r.sessions }}</td>
+          </tr>
+        </tbody>
+      </table>
+      <p v-else class="a-muted">Noch keine Übung mit 3 Einheiten in den letzten {{ RATE_DAYS / 7 }} Wochen.</p>
+      <p class="a-note">Trend des e1RM der letzten {{ RATE_DAYS / 7 }} Wochen in Prozent pro Woche, schnellste zuerst. Ohne Deload, eingeschränkte Sätze, 1RM-Tests und Drops.</p>
     </section>
 
     <!-- 4: weekly sets below plan -->
@@ -166,6 +208,39 @@ const TREND_TEXT = {
       <p class="a-note">Soll: Sätze aus den Tag-Blättern, jeder Trainingstag einmal pro Woche. Ist: alle Sätze der Woche ohne Drops, 1RM-Tests und Aufwärmübungen.</p>
     </section>
 
+    <!-- fatigue within the sessions -->
+    <section class="a-card">
+      <h2>Ermüdung im Training</h2>
+      <template v-if="tired.median !== null">
+        <div class="r-facts">
+          <div>
+            <div class="a-label">Abfall je Einheit, letzte 3 Wochen</div>
+            <div class="r-fact">−{{ Math.round(tired.median) }} %</div>
+            <div class="a-label">Median über die Übungen</div>
+          </div>
+          <div v-if="tired.medianEarlier !== null">
+            <div class="a-label">3 Wochen davor</div>
+            <div class="r-fact">−{{ Math.round(tired.medianEarlier) }} %</div>
+            <div class="a-label" :class="tired.median - tired.medianEarlier >= 5 ? 'a-bad' : tired.medianEarlier - tired.median >= 5 ? 'a-good' : ''">
+              {{ tired.median - tired.medianEarlier >= 5 ? 'Abfall steigt' : tired.medianEarlier - tired.median >= 5 ? 'Abfall sinkt' : 'etwa gleich' }}
+            </div>
+          </div>
+        </div>
+        <ul v-if="tired.high.length" class="r-list">
+          <li v-for="h in tired.high" :key="h.stats.exercise.id">
+            <button type="button" class="a-link" @click="emit('open', h.stats.exercise.id)">{{ h.stats.exercise.name }}</button>
+            <span class="a-muted">im Schnitt −{{ Math.round(h.recent) }} % vom besten zum schwächsten Satz</span>
+          </li>
+        </ul>
+        <p v-else class="r-ok">Keine Übung mit auffällig starkem Abfall.</p>
+      </template>
+      <p v-else class="a-muted">Noch keine Einheit mit mindestens 2 Sätzen in den letzten 3 Wochen.</p>
+      <p class="a-note">
+        Abfall: wie viele Wiederholungen der schwächste Satz unter dem besten liegt, in Prozent (z. B. 15 → 11 = −27 %; bei unterschiedlichen Gewichten umgerechnet auf das schwerste). Ab {{ FATIGUE_HIGH }} % ist er auffällig: oft zu kurze Pausen.
+        Steigt der Abfall über Wochen bei vielen Übungen, ist das ein frühes Deload-Signal, noch bevor das e1RM fällt.
+      </p>
+    </section>
+
     <!-- 5: "Eingeschränkt" -->
     <section class="a-card">
       <h2>Eingeschränkt</h2>
@@ -186,6 +261,22 @@ const TREND_TEXT = {
         </li>
       </ul>
       <p class="a-note">Gezählt werden Übungen pro Training mit Haken „Eingeschränkt“, die letzten 6 Wochen inklusive der laufenden.</p>
+    </section>
+
+    <!-- plausibility -->
+    <section class="a-card">
+      <h2>Auffällige Einträge</h2>
+      <ul v-if="odd.length" class="r-list">
+        <li v-for="o in odd" :key="o.stats.exercise.id + o.date">
+          <span><button type="button" class="a-link" @click="emit('open', o.stats.exercise.id)">{{ o.stats.exercise.name }}</button> · {{ formatIsoDate(o.date) }}</span>
+          <span class="a-muted">{{ o.text }}</span>
+        </li>
+      </ul>
+      <p v-else class="r-ok">Keine auffälligen Einträge.</p>
+      <p class="a-note">
+        Gemeldet werden: e1RM-Sprung von {{ JUMP_PERCENT }} % oder mehr gegenüber der letzten Einheit, Sätze mit 0 oder über 50 Wdh und ein Satz mit doppeltem oder halbem Gewicht der anderen (Tippfehler).
+        Im Sheet prüfen: Tippfehler korrigieren, falsche Technik als „Eingeschränkt“ markieren, dann verschwindet der Eintrag hier. Höchstens 10, die neuesten zuerst.
+      </p>
     </section>
   </div>
 </template>
